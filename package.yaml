@@ -1,0 +1,32 @@
+name:                DPoly
+version:             0.1.0.0
+github:              dcastrop/DPoly
+license:             BSD3
+author:              David Castro-Perez <david.castro.dcp@gmail.com>
+maintainer:          David Castro-Perez <david.castro.dcp@gmail.com>
+copyright:           2017 David Castro-Perez
+extra-source-files:
+- README.md
+- ChangeLog.md
+synopsis:            Deep embedding of a point-free language based on Polynomial
+                     functors
+# category:            Web
+description:         Please see the README on Github at <https://github.com/dcastrop/DPoly#readme>
+dependencies:
+- base >= 4.7 && < 5
+- type-combinators >= 0.2.4 && < 0.3
+
+library:
+  source-dirs: src
+  ghc-options:
+  - -Wall
+# tests:
+#   DPoly-test:
+#     main:                Spec.hs
+#     source-dirs:         test
+#     ghc-options:
+#     - -threaded
+#     - -rtsopts
+#     - -with-rtsopts=-N
+#     dependencies:
+#     - DPoly
