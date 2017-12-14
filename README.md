@@ -1,4 +1,3 @@
-# DPoly
+# poly-lang
 
-A deep embedding of _polynomial functors_, and their primitive operations in
-Haskell.
+A deep embedded point-free language with  _polynomial functors_.
