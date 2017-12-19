@@ -15,6 +15,7 @@ description:         Please see the README on Github at <https://github.com/dcas
 dependencies:
 - base >= 4.7 && < 5
 - type-combinators >= 0.2.4 && < 0.3
+- singletons >= 2.2 && < 2.4
 
 library:
   source-dirs: src

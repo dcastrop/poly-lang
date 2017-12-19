@@ -11,7 +11,7 @@ module Language.Poly.Interp
 ( SemTy(..)
 , SemF(..)
 , AppF(..)
-, Sem(..)
+-- , Sem(..)
 ) where
 
 import Control.Arrow ( (&&&) )
@@ -21,6 +21,7 @@ import qualified Data.Functor.Product as Functor
 import qualified Data.Functor.Const as Functor
 import qualified Data.Functor.Identity as Functor
 import Data.Proxy ( Proxy(..) )
+import Data.Singletons ( SingI (..), Sing )
 
 import Language.Poly.Type
 import Language.Poly.Core
@@ -62,46 +63,47 @@ instance SemTy ty => SemTy (Type ty) where
   type InterpTy ('TFix p) = Fix (InterpF p)
   type InterpTy (a ':-> b) = InterpTy a -> InterpTy b
 
-pmap :: SPoly p -> (a -> b) -> App p a -> App p b
-pmap FK{} _f = id
-pmap FId f = f
-pmap (FProd p1 p2) f = (pmap p1 f . fst) &&& (pmap p2 f . snd)
-pmap (FSum p1 p2) f = either (Left . pmap p1 f) (Right . pmap p2 f)
+pmap :: forall a b (p :: Poly ty). Sing p -> (a -> b) -> App p a -> App p b
+pmap SPK{} _f = id
+pmap SPId   f = f
+pmap (SPProd p1 p2) f = (pmap p1 f . fst) &&& (pmap p2 f . snd)
+pmap (SPSum  p1 p2) f = either (Left . pmap p1 f) (Right . pmap p2 f)
 
-wrap :: SPoly p
+wrap :: forall (p :: Poly ty). Sing p
      -> forall a.
           Proxy a -> App p (InterpTy a) -> InterpTy (p :@: a)
-wrap FK{} _ = id
-wrap FId{} _ = id
-wrap (FProd p1 p2) a = (wrap p1 a . fst) &&& (wrap p2 a . snd)
-wrap (FSum p1 p2) a = either (Left . wrap p1 a) (Right . wrap p2 a)
+wrap SPK{} _ = id
+wrap SPId{} _ = id
+wrap (SPProd p1 p2) a = (wrap p1 a . fst) &&& (wrap p2 a . snd)
+wrap (SPSum p1 p2) a = either (Left . wrap p1 a) (Right . wrap p2 a)
 
-unwrap :: SPoly p
+unwrap :: forall (p :: Poly ty). Sing p
        -> forall a.
             Proxy a -> InterpTy (p :@: a) -> App p (InterpTy a)
-unwrap FK{} _ = id
-unwrap FId{} _ = id
-unwrap (FProd p1 p2) a = (unwrap p1 a . fst) &&& (unwrap p2 a . snd)
-unwrap (FSum p1 p2) a = either (Left . unwrap p1 a) (Right . unwrap p2 a)
+unwrap SPK{} _ = id
+unwrap SPId{} _ = id
+unwrap (SPProd p1 p2) a = (unwrap p1 a . fst) &&& (unwrap p2 a . snd)
+unwrap (SPSum p1 p2) a = either (Left . unwrap p1 a) (Right . unwrap p2 a)
 
-wrapp :: SPoly p
+wrapp :: forall (p :: Poly ty). Sing p
       -> forall a. Proxy a -> InterpF p (InterpTy a) -> InterpTy (p :@: a)
-wrapp FK{} _a = Functor.getConst
-wrapp FId{} _a = Functor.runIdentity
-wrapp (FProd p1 p2) a = (wrapp p1 a . fst &&& wrapp p2 a . snd) . unProd
+wrapp SPK{} _a = Functor.getConst
+wrapp SPId{} _a = Functor.runIdentity
+wrapp (SPProd p1 p2) a = (wrapp p1 a . fst &&& wrapp p2 a . snd) . unProd
   where
     unProd (Functor.Pair l r) = (l, r)
-wrapp (FSum p1 p2) a = either (Left . wrapp p1 a) (Right . wrapp p2 a) . unSum
+wrapp (SPSum p1 p2) a = either (Left . wrapp p1 a) (Right . wrapp p2 a) . unSum
   where
     unSum (Functor.InL x) = Left x
     unSum (Functor.InR x) = Right x
 
-unwrapp :: SPoly p -> Proxy a -> InterpTy (p :@: a) -> InterpF p (InterpTy a)
-unwrapp FK{} _a = Functor.Const
-unwrapp FId{} _a = Functor.Identity
-unwrapp (FProd p1 p2) a =
+unwrapp :: forall (p :: Poly ty). Sing p -> forall a.
+              Proxy a -> InterpTy (p :@: a) -> InterpF p (InterpTy a)
+unwrapp SPK{} _a = Functor.Const
+unwrapp SPId{} _a = Functor.Identity
+unwrapp (SPProd p1 p2) a =
     uncurry Functor.Pair . (unwrapp p1 a . fst &&& unwrapp p2 a . snd)
-unwrapp (FSum p1 p2) a =
+unwrapp (SPSum p1 p2) a =
     either (Functor.InL . unwrapp p1 a) (Functor.InR . unwrapp p2 a)
 
 class SemTy t => Sem (f :: Type t -> *) where
@@ -147,8 +149,8 @@ evalNat (Ncase x1 x2) a = evalNat x1 a `either` evalNat x2 a
 typeOf :: Core t a -> Proxy a
 typeOf _ = Proxy
 
-tyFix :: IsPoly f => Proxy ('TFix f) -> SPoly f
-tyFix _ = spoly
+tyFix :: forall (f :: Poly ty). SingI f => Proxy ('TFix f) -> Sing f
+tyFix _ = sing
 
 dom :: Proxy (a ':-> b) -> Proxy a
 dom _ = Proxy
@@ -156,5 +158,5 @@ dom _ = Proxy
 cod :: Proxy (a ':-> b) -> Proxy b
 cod _ = Proxy
 
-ntfrom :: IsPoly f => Nat a f g -> SPoly f
-ntfrom _ = spoly
+ntfrom :: SingI f => Nat a f g -> Sing f
+ntfrom _ = sing

@@ -1,15 +1,18 @@
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeInType #-}
 {-# LANGUAGE TypeOperators #-}
 module Language.Poly.Core
 ( Core (..)
 , Nat(..)
+, getType
 ) where
 
+import Data.Kind hiding ( Type )
 import Data.Proxy ( Proxy )
 import Language.Poly.Type
+import Data.Singletons ( Sing, SingI (..), fromSing, DemoteRep, SingKind )
 
 -- forall a. f a ~> g a
 data Nat (t :: Type ty -> *) (a :: Poly ty) (b :: Poly ty)
@@ -65,23 +68,28 @@ data Core (t :: Type ty -> *) (a :: Type ty)
          -> Core t (c ':-> a)
          -> Core t ('TSum b c ':-> a)
 
-    Fmap  :: SPoly f
+    Fmap  :: Sing f
           -> Core t (a ':-> b)
           -> Core t (f :@: a ':-> f :@: b)
 
-    Hfmap :: (IsPoly f, IsPoly g)
+    Hfmap :: (SingI f, SingI g)
           => Nat t f g
           -> Proxy a
           -> Core t (f :@: a ':-> g :@: a)
 
-    In   :: IsPoly f
+    In   :: SingI f
          => Core t (f :@: 'TFix f ':-> 'TFix f)
 
-    Out  :: IsPoly f
+    Out  :: SingI f
          => Core t ('TFix f ':-> f :@: 'TFix f)
 
-    Rec  :: (IsPoly f, IsPoly g) =>
+    Rec  :: (SingI f, SingI g) =>
             Core t (g :@: b ':-> b)
          -> Nat t f g
          -> Core t (a ':-> f :@: a)
          -> Core t (a ':-> b)
+
+getType :: forall (ty :: *) (p :: Type ty -> *) (t :: Type ty).
+              (SingI t, SingKind ty) =>
+                  Core p t -> Type (DemoteRep ty)
+getType _ = fromSing (sing :: Sing t)
