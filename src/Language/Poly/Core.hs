@@ -7,6 +7,7 @@ module Language.Poly.Core
 ( Core (..)
 , Nat(..)
 , getType
+, getTypeS
 ) where
 
 import Data.Kind hiding ( Type )
@@ -88,6 +89,11 @@ data Core (t :: Type ty -> *) (a :: Type ty)
          -> Nat t f g
          -> Core t (a ':-> f :@: a)
          -> Core t (a ':-> b)
+
+getTypeS :: forall (ty :: *) (p :: Type ty -> *) (t :: Type ty).
+              (SingI t, SingKind ty) =>
+                  Core p t -> Sing t
+getTypeS _ = sing
 
 getType :: forall (ty :: *) (p :: Type ty -> *) (t :: Type ty).
               (SingI t, SingKind ty) =>
