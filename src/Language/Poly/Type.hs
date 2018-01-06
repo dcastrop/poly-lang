@@ -1,8 +1,7 @@
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeInType #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
 module Language.Poly.Type
@@ -10,8 +9,10 @@ module Language.Poly.Type
 , Sing (..)
 , Type (..)
 , (:@:)
+, app
 ) where
 
+import Data.Kind hiding ( Type )
 import Data.Singletons
 
 data Poly ty =
@@ -111,3 +112,8 @@ type family (:@:) (p :: Poly ty) (t :: Type ty) :: Type ty where
   'PProd p1 p2 :@: t = 'TProd (p1 :@: t) (p2 :@: t)
   'PSum p1 p2 :@: t = 'TSum (p1 :@: t) (p2 :@: t)
 
+app :: forall (ty :: *) (p :: Poly ty) (t :: Type ty). Sing p -> Sing t -> Sing (p :@: t)
+app SPId           t = t
+app (SPK c)       _t = c
+app (SPProd p1 p2) t = STProd (p1 `app` t) (p2 `app` t)
+app (SPSum p1 p2)  t = STSum  (p1 `app` t) (p2 `app` t)
