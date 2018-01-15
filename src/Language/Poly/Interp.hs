@@ -8,14 +8,16 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 module Language.Poly.Interp
-( SemTy(..)
-, SemF(..)
-, AppF(..)
-, typeOf
-, dom
-, cod
-, tfix
-, Sem (..)
+  ( SemTy(..)
+  , SemF(..)
+  , AppF(..)
+  , typeOf
+  , dom
+  , cod
+  , tyLeft
+  , tyRight
+  , tfix
+  , Sem (..)
 ) where
 
 import Control.Arrow ( (&&&) )
@@ -164,7 +166,14 @@ dom (t1 `STArr` _t2) = t1
 cod :: Sing (a ':-> b) -> Sing b
 cod (_t1 `STArr` t2) = t2
 
+tyLeft  :: Sing (a '`TSum` b) -> Sing a
+tyLeft (t1 `STSum` _t2) = t1
+
+tyRight :: Sing (a '`TSum` b) -> Sing b
+tyRight (_t1 `STSum` t2) = t2
+
 ntfrom :: SingI f => Nat a f g -> Sing f
 ntfrom _ = sing
+
 ntto :: SingI g => Nat a f g -> Sing g
 ntto _ = sing

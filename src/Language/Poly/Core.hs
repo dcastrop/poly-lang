@@ -15,7 +15,7 @@ import Language.Poly.Type
 import Data.Singletons ( Sing, SingI (..), fromSing, DemoteRep, SingKind )
 
 -- forall a. f a ~> g a
-data Nat (t :: Type ty -> *) (a :: Poly ty) (b :: Poly ty)
+data Nat (t :: Type ty -> *) (f :: Poly ty) (g :: Poly ty)
   where
     Nid    :: SingI f
            => Nat t f f
