@@ -16,6 +16,8 @@ dependencies:
 - base >= 4.7 && < 5
 - type-combinators >= 0.2.4 && < 0.3
 - singletons >= 2.2 && < 2.4
+- prettyprinter >= 1.1 && < 1.2
+- quoted-prettyprinter >= 0.1 && < 0.2
 
 library:
   source-dirs: src

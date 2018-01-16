@@ -1,18 +1,24 @@
 {-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
 module Language.Poly.Type
-( Poly (..)
-, Sing (..)
-, Type (..)
-, (:@:)
-, app
-) where
+  ( Poly (..)
+  , Sing (..)
+  , Type (..)
+  , (:@:)
+  , app
+  ) where
 
 import Data.Kind hiding ( Type )
+
+import Data.Text.Prettyprint.Doc ( Pretty, pretty )
+import qualified Data.Text.Prettyprint.Doc as Pretty
+import Data.Text.Prettyprint.EDoc
+
 import Data.Singletons
 
 data Poly ty =
@@ -117,3 +123,96 @@ app SPId           t = t
 app (SPK c)       _t = c
 app (SPProd p1 p2) t = STProd (p1 `app` t) (p2 `app` t)
 app (SPSum p1 p2)  t = STSum  (p1 `app` t) (p2 `app` t)
+
+
+--------------------------------------------------------------------------
+-- Pretty printing instances
+
+-- Precedences: XXX fix quoted-prettyprinter to handle these cases without so
+-- much boilerplate. Ideally, a predicate would be enough!
+newtype ParK p = ParK (Type p)
+instance Pretty p => Pretty (ParK p)
+  where
+    pretty (ParK p@TUnit) = pretty p
+    pretty (ParK p      ) = Pretty.parens (pretty p)
+
+newtype ParPPL p = ParPPL (Poly p)
+instance Pretty p => Pretty (ParPPL p)
+  where
+    pretty (ParPPL p@PSum{}) = Pretty.parens (pretty p)
+    pretty (ParPPL p) = pretty p
+
+newtype ParPId p = ParPId (Poly p)
+instance Pretty p => Pretty (ParPId p)
+  where
+    pretty (ParPId p@PId) = pretty p
+    pretty (ParPId p    ) = Pretty.parens (pretty p)
+
+newtype ParPPR p = ParPPR (Poly p)
+instance Pretty p => Pretty (ParPPR p)
+  where
+    pretty (ParPPR p@PId) = pretty p
+    pretty (ParPPR p@PK{}) = pretty p
+    pretty (ParPPR p    ) = Pretty.parens (pretty p)
+
+newtype ParSPL p = ParSPL (Poly p)
+instance Pretty p => Pretty (ParSPL p)
+  where
+    pretty (ParSPL p) = pretty p
+
+newtype ParSPR p = ParSPR (Poly p)
+instance Pretty p => Pretty (ParSPR p)
+  where
+    pretty (ParSPR p@PSum{}    ) = Pretty.parens (pretty p)
+    pretty (ParSPR p) = pretty p
+
+newtype ParFunL ty = PFL (Type ty)
+instance Pretty ty => Pretty (ParFunL ty)
+  where
+    pretty (PFL t@(_t1 :-> _t2)) = Pretty.parens [ppr| t |]
+    pretty (PFL t)               = [ppr| t |]
+
+newtype ParPL p = ParPL (Type p)
+instance Pretty p => Pretty (ParPL p)
+  where
+    pretty (ParPL p@(_t1 :-> _t2)) = Pretty.parens [ppr| p |]
+    pretty (ParPL p@TSum{}) = Pretty.parens [ppr| p |]
+    pretty (ParPL p) = [ppr| p |]
+
+newtype ParPR p = ParPR (Type p)
+instance Pretty p => Pretty (ParPR p)
+  where
+    pretty (ParPR p@(_t1 :-> _t2)) = Pretty.parens [ppr| p |]
+    pretty (ParPR p@TSum{}) = Pretty.parens [ppr| p |]
+    pretty (ParPR p@TProd{}) = Pretty.parens [ppr| p |]
+    pretty (ParPR p) = [ppr| p |]
+
+newtype ParSL p = ParSL (Type p)
+instance Pretty p => Pretty (ParSL p)
+  where
+    pretty (ParSL p@(_t1 :-> _t2)) = Pretty.parens [ppr| p |]
+    pretty (ParSL p) = [ppr| p |]
+
+newtype ParSR p = ParSR (Type p)
+instance Pretty p => Pretty (ParSR p)
+  where
+    pretty (ParSR p@(_t1 :-> _t2)) = Pretty.parens [ppr| p |]
+    pretty (ParSR p@TSum{}) = Pretty.parens [ppr| p |]
+    pretty (ParSR p) = [ppr| p |]
+-- end precedences
+
+instance Pretty ty => Pretty (Poly ty)
+  where
+    pretty PId           = [ppr| "I" |]
+    pretty (PK p)        = [ppr| "K" > ParK p |]
+    pretty (PProd p1 p2) = [ppr| ParPPL p1 + ":*:" + ParPPR p2 |]
+    pretty (PSum p1 p2)  = [ppr| ParSPL p1 + ":+:" + ParSPR p2 |]
+
+instance Pretty ty => Pretty (Type ty)
+  where
+    pretty TUnit         = [ppr| "unit" |]
+    pretty (TPrim t)     = pretty t
+    pretty (TProd t1 t2) = [ppr| ParPL t1 + "*" + ParPR t2 |]
+    pretty (TSum  t1 t2) = [ppr| ParSL t1 + "+" + ParSR t2 |]
+    pretty (TFix  p)     = [ppr| "fix" + ParPId p |]
+    pretty (t1 :-> t2)   = [ppr| PFL t1 + "->" + t2|]
