@@ -13,18 +13,17 @@ module Language.Poly.TypeCheck
 
 import Control.Monad.Except ( MonadError(..) )
 import Data.Kind hiding ( Type )
-import Data.Singletons ( Sing, DemoteRep )
+import Data.Singletons ( Sing, SingI, DemoteRep )
 
 import Language.Poly.Type
 
 data TcError =
   TcError
 
-infix 4 :::
-data Typed ty (t :: Type ty -> *)
+infix 3 :::
+data Typed (t :: Type ty -> *)
   where
-    (:::) :: forall ty (a :: Type ty) (t :: Type ty -> *).
-             t a -> Sing a -> Typed ty t
+    (:::) :: SingI a => t a -> Sing a -> Typed t
 
-class TC t u | t -> u where
-  typeCheck :: MonadError TcError m => u (DemoteRep ty) -> m (Typed ty t)
+class TC (t :: Type ty -> *) u | t -> u where
+  typeCheck :: MonadError TcError m => u (DemoteRep ty) -> m (Typed t)

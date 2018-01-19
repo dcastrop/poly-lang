@@ -24,6 +24,7 @@ import Data.Singletons
 import Data.Text.Prettyprint.Doc ( Pretty, pretty )
 
 import Language.Poly.Erasure
+import Language.Poly.TypeCheck
 import qualified Language.Poly.UCore as C
 import Language.Poly.Type
 
@@ -154,6 +155,13 @@ instance Erasure t e => Erasure (Core t) (C.Core e) where
   erase In            = C.In
   erase Out           = C.Out
   erase (Rec g n h)   = C.Rec (erase g) (eraseNat n) (erase h)
+
+instance TC t e => TC (Core t) (C.Core e) where
+  typeCheck C.Unit = return (Unit ::: STUnit)
+  typeCheck (C.Prim p) = do (tp ::: t) <- typeCheck p
+                            return (Prim tp ::: t)
+--  typeCheck (C.Const c) = do (tc ::: t) <- typeCheck c
+--                             return (Const tc ::: )
 
 instance forall ty (t :: Type ty -> *) (a :: Type ty) e.
              ( Erasure t e
