@@ -1,5 +1,9 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE TypeOperators #-}
@@ -11,8 +15,17 @@ module Language.Poly.Core
 ) where
 
 import Data.Kind hiding ( Type )
+import Data.Singletons
+  ( Sing
+  , SingI (..)
+  , fromSing
+  , DemoteRep
+  , SingKind )
+import Data.Text.Prettyprint.Doc ( Pretty, pretty )
+
+import Language.Poly.Erasure
+import qualified Language.Poly.UCore as C
 import Language.Poly.Type
-import Data.Singletons ( Sing, SingI (..), fromSing, DemoteRep, SingKind )
 
 -- forall a. f a ~> g a
 data Nat (t :: Type ty -> *) (f :: Poly ty) (g :: Poly ty)
@@ -45,6 +58,20 @@ data Nat (t :: Type ty -> *) (f :: Poly ty) (g :: Poly ty)
            => Nat t g f
            -> Nat t h f
            -> Nat t ('PSum g h) f
+
+eraseNat :: forall ty (t :: Type ty -> *) (f :: Poly ty) (g :: Poly ty) e.
+           SingKind ty
+         => Erasure t e
+         => Nat t f g
+         -> C.Nat e (DemoteRep ty)
+eraseNat Nid          = C.Nid
+eraseNat (NK f)       = C.NK (erase f)
+eraseNat Nfst         = C.Nfst
+eraseNat Nsnd         = C.Nsnd
+eraseNat (Nsplit f g) = C.Nsplit (eraseNat f) (eraseNat g)
+eraseNat Ninl         = C.Ninl
+eraseNat Ninr         = C.Ninr
+eraseNat (Ncase f g)  = C.Ncase (eraseNat f) (eraseNat g)
 
 data Core (t :: Type ty -> *) (a :: Type ty)
   where
@@ -109,6 +136,32 @@ data Core (t :: Type ty -> *) (a :: Type ty)
          -> Nat t f g
          -> Core t (a ':-> f :@: a)
          -> Core t (a ':-> b)
+
+instance Erasure t e => Erasure (Core t) (C.Core e) where
+  erase Unit          = C.Unit
+  erase (Prim p)      = C.Prim (erase p)
+  erase (Const x)     = C.Const (erase x)
+  erase Id            = C.Id
+  erase (Comp f g)    = erase f `C.Comp` erase g
+  erase Fst           = C.Fst
+  erase Snd           = C.Snd
+  erase (Split f g)   = erase f `C.Split` erase g
+  erase Inl           = C.Inl
+  erase Inr           = C.Inr
+  erase (Case f g)    = erase f `C.Case` erase g
+  erase (Fmap p f)    = C.Fmap (fromSing p) (erase f)
+  erase (Hfmap n _ty) = C.Hfmap (eraseNat n)
+  erase In            = C.In
+  erase Out           = C.Out
+  erase (Rec g n h)   = C.Rec (erase g) (eraseNat n) (erase h)
+
+instance forall ty (t :: Type ty -> *) (a :: Type ty) e.
+             ( Erasure t e
+             , Pretty (DemoteRep ty)
+             , Pretty (e (DemoteRep ty))
+             , SingKind ty)
+           => Pretty (Core t a) where
+  pretty = pretty . erase
 
 getTypeS :: forall (ty :: *) (p :: Type ty -> *) (t :: Type ty).
               (SingI t, SingKind ty) =>
