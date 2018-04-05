@@ -1,6 +1,8 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ExplicitForAll #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE QuasiQuotes #-}
@@ -62,7 +64,7 @@ data Nat (t :: Type ty -> *) (f :: Poly ty) (g :: Poly ty)
 
 eraseNat :: forall ty (t :: Type ty -> *) (f :: Poly ty) (g :: Poly ty) e.
            SingKind ty
-         => Erasure t e
+         => Erasure ty t e
          => Nat t f g
          -> C.Nat e (DemoteRep ty)
 eraseNat Nid          = C.Nid
@@ -82,34 +84,36 @@ data Core (t :: Type ty -> *) (a :: Type ty)
           => t a
           -> Core t a
 
+    Curry :: Core t ('TProd a b ':-> c)
+          -> Core t (a ':-> b ':-> c)
+
+    Ap :: (SingI a, SingI b)
+       => Core t ('TProd (a ':-> b) a)
+       -> Core t b
+
     Const :: (SingI a, SingI b)
           => Core t a
           -> Core t (b ':-> a)
 
-    Id    :: SingI a
-          => Core t (a ':-> a)
+    Id    :: Core t (a ':-> a)
 
     Comp  :: (SingI a, SingI b, SingI c)
           => Core t (b ':-> c)
           -> Core t (a ':-> b)
           -> Core t (a ':-> c)
 
-    Fst   :: (SingI a, SingI b)
-          => Core t ('TProd a b ':-> a)
+    Fst   :: Core t ('TProd a b ':-> a)
 
-    Snd   :: (SingI a, SingI b)
-          => Core t ('TProd a b ':-> b)
+    Snd   :: Core t ('TProd a b ':-> b)
 
     Split :: (SingI a, SingI b, SingI c)
           => Core t (a ':-> b)
           -> Core t (a ':-> c)
           -> Core t (a ':-> 'TProd b c)
 
-    Inl  :: (SingI a, SingI b)
-         => Core t (a ':-> 'TSum a b)
+    Inl  :: Core t (a ':-> 'TSum a b)
 
-    Inr  :: (SingI a, SingI b)
-         => Core t (b ':-> 'TSum a b)
+    Inr  :: Core t (b ':-> 'TSum a b)
 
     Case :: (SingI a, SingI b, SingI c)
          => Core t (b ':-> a)
@@ -138,11 +142,13 @@ data Core (t :: Type ty -> *) (a :: Type ty)
          -> Core t (a ':-> f :@: a)
          -> Core t (a ':-> b)
 
-instance Erasure t e => Erasure (Core t) (C.Core e) where
+instance Erasure ty t e => Erasure ty (Core t) (C.Core e) where
   erase Unit          = C.Unit
   erase (Prim p)      = C.Prim (erase p)
   erase (Const x)     = C.Const (erase x)
   erase Id            = C.Id
+  erase (Curry f)     = C.Curry (erase f)
+  erase (Ap fx)       = C.Ap (erase fx)
   erase (Comp f g)    = erase f `C.Comp` erase g
   erase Fst           = C.Fst
   erase Snd           = C.Snd
@@ -164,7 +170,7 @@ instance TC t e => TC (Core t) (C.Core e) where
 --                             return (Const tc ::: )
 
 instance forall ty (t :: Type ty -> *) (a :: Type ty) e.
-             ( Erasure t e
+             ( Erasure ty t e
              , Pretty (DemoteRep ty)
              , Pretty (e (DemoteRep ty))
              , SingKind ty)

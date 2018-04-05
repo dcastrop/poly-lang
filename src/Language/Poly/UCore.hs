@@ -26,12 +26,15 @@ data Nat t ty
   | Ninl
   | Ninr
   | Ncase  (Nat t ty) (Nat t ty)
+  deriving Eq
 
 data Core t ty
   = Unit
   | Prim  (t ty)
   | Const (Core t ty)
   | Id
+  | Curry (Core t ty)
+  | Ap    (Core t ty)
   | Comp  (Core t ty) (Core t ty)
   | Fst
   | Snd
@@ -44,6 +47,7 @@ data Core t ty
   | In
   | Out
   | Rec   (Core t ty) (Nat t ty) (Core t ty)
+  deriving Eq
 
 --------------------------------------------------------------------------------
 -- Pretty printing instances
@@ -60,6 +64,7 @@ instance (Pretty ty, Pretty (t ty)) => Pretty (Nat t ty) where
 
 instance (Pretty ty, Pretty (t ty)) => Pretty (Core t ty) where
   pretty Unit          = [ppr| "()" |]
+  pretty (Ap fx)       = [ppr| "ap" + fx |]
   pretty (Prim p)      = [ppr| p |]
   pretty (Const x)     = [ppr| "K" + x |]
   pretty Id            = [ppr| "I" |]

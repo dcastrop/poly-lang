@@ -15,7 +15,7 @@ description:         Please see the README on Github at <https://github.com/dcas
 dependencies:
 - base >= 4.7 && < 5
 - type-combinators >= 0.2.4 && < 0.3
-- singletons >= 2.2 && < 2.4
+- singletons >= 2.2 && < 2.3
 - prettyprinter >= 1.1 && < 1.2
 - quoted-prettyprinter >= 0.1 && < 0.2
 - mtl >= 2.2.1 && < 2.3

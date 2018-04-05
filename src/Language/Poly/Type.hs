@@ -26,6 +26,7 @@ data Poly ty =
   | PK (Type ty)
   | PProd (Poly ty) (Poly ty)
   | PSum (Poly ty) (Poly ty)
+  deriving Eq
 
 data instance Sing (p :: Poly ty) where
   SPId :: Sing 'PId
@@ -60,7 +61,6 @@ instance SingKind ty => SingKind (Poly ty) where
       case (toSing p1, toSing p2) of
           (SomeSing t1, SomeSing t2) -> SomeSing $ SPSum t1 t2
 
-infixl 5 :@:
 infixr 4 :->
 
 data Type ty =
@@ -70,6 +70,7 @@ data Type ty =
   | TSum (Type ty) (Type ty)
   | TFix (Poly ty)
   | Type ty :-> Type ty
+  deriving Eq
 
 data instance Sing (t :: Type ty) where
   STUnit :: Sing 'TUnit
@@ -112,6 +113,7 @@ instance SingKind ty => SingKind (Type ty) where
   toSing ((toSing -> SomeSing t1) :-> (toSing -> SomeSing t2)) =
       SomeSing $ STArr t1 t2
 
+infixl 5 :@:
 type family (:@:) (p :: Poly ty) (t :: Type ty) :: Type ty where
   'PK c :@: t = c
   'PId :@: t = t
