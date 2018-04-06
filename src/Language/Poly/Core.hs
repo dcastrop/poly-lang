@@ -149,7 +149,7 @@ instance Erasure ty t e => Erasure ty (Core t) (C.Core e) where
   erase Id            = C.Id
   erase (Curry f)     = C.Curry (erase f)
   erase (Ap fx)       = C.Ap (erase fx)
-  erase (Comp f g)    = erase f `C.Comp` erase g
+  erase (Comp f g)    = C.Comp (getDom f) (erase f) (erase g)
   erase Fst           = C.Fst
   erase Snd           = C.Snd
   erase (Split f g)   = erase f `C.Split` erase g
@@ -162,7 +162,12 @@ instance Erasure ty t e => Erasure ty (Core t) (C.Core e) where
   erase Out           = C.Out
   erase (Rec g n h)   = C.Rec (erase g) (eraseNat n) (erase h)
 
-instance TC t e => TC (Core t) (C.Core e) where
+getDom :: forall ty t (a :: Type ty) (b :: Type ty).
+         (SingKind ty, SingI a, SingI b)
+       => Core t (a ':-> b) -> Type (DemoteRep ty)
+getDom _ = fromSing (sing :: Sing a)
+
+instance TC ty t e => TC ty (Core t) (C.Core e) where
   typeCheck C.Unit = return (Unit ::: STUnit)
   typeCheck (C.Prim p) = do (tp ::: t) <- typeCheck p
                             return (Prim tp ::: t)

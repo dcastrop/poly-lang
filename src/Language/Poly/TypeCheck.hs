@@ -25,5 +25,5 @@ data Typed (t :: Type ty -> *)
   where
     (:::) :: SingI a => t a -> Sing a -> Typed t
 
-class TC (t :: Type ty -> *) u | t -> u where
+class TC ty (t :: Type ty -> *) u | ty t -> u where
   typeCheck :: MonadError TcError m => u (Demote ty) -> m (Typed t)

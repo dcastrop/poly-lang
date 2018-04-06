@@ -121,7 +121,6 @@ instance Sem f => Sem (Core f) where
   evalTy _ (Prim p) = evalTy sing p
   evalTy _ (Const x) = const (evalTy sing x)
   evalTy _ Id = id
-  evalTy _ (Comp x1 x2) = eval x1 . eval x2
   evalTy _ Fst = fst
   evalTy _ Snd = snd
   evalTy _ (Split x1 x2) = eval x1 &&& eval x2
@@ -141,6 +140,9 @@ instance Sem f => Sem (Core f) where
     pmap (ntfrom m) (evalTy ty f) .
     unwrap (ntfrom m) (dom ty) .
     evalTy (dom ty `STArr` app (ntfrom m) (dom ty)) h
+  evalTy _ (Comp x1 x2) = eval x1 . eval x2
+  evalTy _ (Curry _) = error "Unimplemented"
+  evalTy _ (Ap _) = error "Unimplemented"
 
 evalNat :: (Sem t, SingI p, SingI q)
         => Nat t p q

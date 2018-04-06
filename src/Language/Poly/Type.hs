@@ -1,3 +1,7 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE QuasiQuotes #-}
@@ -5,6 +9,7 @@
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE EmptyCase #-}
 module Language.Poly.Type
   ( Poly (..)
   , Sing (..)
@@ -20,6 +25,7 @@ import qualified Data.Text.Prettyprint.Doc as Pretty
 import Data.Text.Prettyprint.EDoc
 
 import Data.Singletons
+import Data.Singletons.Decide
 
 data Poly ty =
     PId
@@ -33,6 +39,33 @@ data instance Sing (p :: Poly ty) where
   SPK  :: Sing t -> Sing ('PK t)
   SPProd :: Sing p1 -> Sing p2 -> Sing ('PProd p1 p2)
   SPSum :: Sing p1 -> Sing p2 -> Sing ('PSum p1 p2)
+
+injSPK :: 'PK t1 :~: 'PK t2 -> t1 :~: t2
+injSPK Refl = Refl
+
+injPProd :: 'PProd t1 t3 :~: 'PProd t2 t4 -> (t1 :~: t2, t3 :~: t4)
+injPProd Refl = (Refl, Refl)
+
+injPSum :: 'PSum t1 t3 :~: 'PSum t2 t4 -> (t1 :~: t2, t3 :~: t4)
+injPSum Refl = (Refl, Refl)
+
+instance SDecide ty => SDecide (Poly ty) where
+  SPId %~ SPId = Proved Refl
+  SPK t1 %~ SPK t2 = case t1 %~ t2 of
+                        Proved Refl -> Proved Refl
+                        Disproved f -> Disproved (\pr -> f (injSPK pr))
+  SPProd t1 t3 %~ SPProd t2 t4 =
+    case (t1 %~ t2, t3 %~ t4) of
+      (Proved Refl, Proved Refl) -> Proved Refl
+      (Disproved f, _)           -> Disproved (\pr -> f (fst $ injPProd pr))
+      (_, Disproved f)           -> Disproved (\pr -> f (snd $ injPProd pr))
+  SPSum t1 t3 %~ SPSum t2 t4 =
+    case (t1 %~ t2, t3 %~ t4) of
+      (Proved Refl, Proved Refl) -> Proved Refl
+      (Disproved f, _)           -> Disproved (\pr -> f (fst $ injPSum pr))
+      (_, Disproved f)           -> Disproved (\pr -> f (snd $ injPSum pr))
+  _ %~ _ = Disproved (\pr -> case pr of {} ) -- Why no warning???
+
 
 instance SingI 'PId where
   sing = SPId
@@ -72,6 +105,21 @@ data Type ty =
   | Type ty :-> Type ty
   deriving Eq
 
+injPrim :: 'TPrim t1 :~: 'TPrim t2 -> t1 :~: t2
+injPrim Refl = Refl
+
+injSum :: 'TSum t1 t3 :~: 'TSum t2 t4 -> (t1 :~: t2, t3 :~: t4)
+injSum Refl = (Refl, Refl)
+
+injProd :: 'TProd t1 t3 :~: 'TProd t2 t4 -> (t1 :~: t2, t3 :~: t4)
+injProd Refl = (Refl, Refl)
+
+injFix :: 'TFix t1 :~: 'TFix t2 -> t1 :~: t2
+injFix Refl = Refl
+
+injArr :: (t1 ':-> t3) :~: (t2 ':-> t4) -> (t1 :~: t2, t3 :~: t4)
+injArr Refl = (Refl, Refl)
+
 data instance Sing (t :: Type ty) where
   STUnit :: Sing 'TUnit
   STPrim :: Sing t  -> Sing ('TPrim t)
@@ -79,6 +127,37 @@ data instance Sing (t :: Type ty) where
   STSum  :: Sing t1 -> Sing t2 -> Sing ('TSum  t1 t2)
   STFix  :: Sing p  -> Sing ('TFix p)
   STArr  :: Sing t1 -> Sing t2 -> Sing (t1 ':-> t2)
+
+instance SDecide ty => SDecide (Type ty) where
+  STUnit     %~ STUnit     = Proved Refl
+  STPrim a   %~ STPrim c   =
+    case a %~ c of
+      Proved Refl -> Proved Refl
+      Disproved f -> Disproved (\pr -> f (injPrim pr))
+  STProd a b %~ STProd c d =
+    case (a %~ c, b %~ d) of
+      (Proved Refl, Proved Refl) -> Proved Refl
+      (Disproved f, _)           -> Disproved (\pr -> f (fst $ injProd pr))
+      (_, Disproved f)           -> Disproved (\pr -> f (snd $ injProd pr))
+  STSum  a b %~ STSum  c d =
+    case (a %~ c, b %~ d) of
+      (Proved Refl, Proved Refl) -> Proved Refl
+      (Disproved f, _)           -> Disproved (\pr -> f (fst $ injSum pr))
+      (_, Disproved f)           -> Disproved (\pr -> f (snd $ injSum pr))
+  STFix  a   %~ STFix  c =
+    case a %~ c of
+      Proved Refl -> Proved Refl
+      Disproved f -> Disproved (\pr -> f (injFix pr))
+  STArr  a b %~ STArr  c d =
+    case (a %~ c, b %~ d) of
+      (Proved Refl, Proved Refl) -> Proved Refl
+      (Disproved f, _)           -> Disproved (\pr -> f (fst $ injArr pr))
+      (_, Disproved f)           -> Disproved (\pr -> f (snd $ injArr pr))
+  _ %~ _ = Disproved (\pr -> case pr of {}) -- HACK AGAIN! Need to list all cases
+
+
+
+
 
 instance SingI 'TUnit where
   sing = STUnit
@@ -114,6 +193,7 @@ instance SingKind ty => SingKind (Type ty) where
       SomeSing $ STArr t1 t2
 
 infixl 5 :@:
+
 type family (:@:) (p :: Poly ty) (t :: Type ty) :: Type ty where
   'PK c :@: t = c
   'PId :@: t = t
@@ -125,7 +205,6 @@ app SPId           t = t
 app (SPK c)       _t = c
 app (SPProd p1 p2) t = STProd (p1 `app` t) (p2 `app` t)
 app (SPSum p1 p2)  t = STSum  (p1 `app` t) (p2 `app` t)
-
 
 --------------------------------------------------------------------------
 -- Pretty printing instances

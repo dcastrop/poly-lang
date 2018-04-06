@@ -35,7 +35,7 @@ data Core t ty
   | Id
   | Curry (Core t ty)
   | Ap    (Core t ty)
-  | Comp  (Core t ty) (Core t ty)
+  | Comp (Type ty) (Core t ty) (Core t ty)
   | Fst
   | Snd
   | Split (Core t ty) (Core t ty)
@@ -68,7 +68,7 @@ instance (Pretty ty, Pretty (t ty)) => Pretty (Core t ty) where
   pretty (Prim p)      = [ppr| p |]
   pretty (Const x)     = [ppr| "K" + x |]
   pretty Id            = [ppr| "I" |]
-  pretty (Comp f g)    = [ppr| f + "." + g |]
+  pretty (Comp _ f g)  = [ppr| f + "." + g |]
   pretty Fst           = [ppr| "fst" |]
   pretty Snd           = [ppr| "snd" |]
   pretty (Split f g)   = [ppr| "(" + f + "/\\" + g + ")"|]
