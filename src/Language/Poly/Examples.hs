@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeInType #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
@@ -22,7 +23,7 @@ instance SingI 'Int32 where
 instance SingI 'Float32 where
   sing = SFloat32
 
-type family Unit :: Poly Prim where
+type family Unit :: TPoly Prim where
   Unit = 'PK 'TUnit
 
 type L (a :: Type Prim) = 'PSum Unit ('PProd ('PK a) 'PId)

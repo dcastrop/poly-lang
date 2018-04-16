@@ -31,7 +31,7 @@ import qualified Language.Poly.UCore as C
 import Language.Poly.Type
 
 -- forall a. f a ~> g a
-data Nat (t :: Type ty -> *) (f :: Poly ty) (g :: Poly ty)
+data Nat (t :: Type ty -> *) (f :: TPoly ty) (g :: TPoly ty)
   where
     Nid    :: SingI f
            => Nat t f f
@@ -62,7 +62,7 @@ data Nat (t :: Type ty -> *) (f :: Poly ty) (g :: Poly ty)
            -> Nat t h f
            -> Nat t ('PSum g h) f
 
-eraseNat :: forall ty (t :: Type ty -> *) (f :: Poly ty) (g :: Poly ty) e.
+eraseNat :: forall ty (t :: Type ty -> *) (f :: TPoly ty) (g :: TPoly ty) e.
            SingKind ty
          => Erasure ty t e
          => Nat t f g

@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeInType #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE KindSignatures #-}
@@ -20,6 +21,8 @@ module Language.Poly.Interp
   , Sem (..)
 ) where
 
+import Data.Kind hiding ( Type )
+
 import Control.Arrow ( (&&&) )
 import qualified Data.Kind as Kind
 import qualified Data.Functor.Sum as Functor
@@ -40,19 +43,19 @@ class AppF f k where
 class SemTy ty where
   type InterpTy (t :: ty) :: *
 
-instance SemTy ty => SemF (Poly ty) where
+instance SemTy ty => SemF (TPoly ty) where
   type InterpF ('PK t) = Functor.Const (InterpTy t)
   type InterpF 'PId = Functor.Identity
   type InterpF ('PSum f g) = Functor.Sum (InterpF f) (InterpF g)
   type InterpF ('PProd f g) = Functor.Product (InterpF f) (InterpF g)
 
-instance SemTy ty => AppF (Poly ty) Kind.Type where
+instance SemTy ty => AppF (TPoly ty) Kind.Type where
   type App ('PK t) h = InterpTy t
   type App 'PId h = h
   type App ('PSum f g) h = Either (App f h) (App g h)
   type App ('PProd f g) h = (App f h, App g h)
 
-instance SemTy ty => AppF (Poly ty) (Type ty) where
+instance SemTy ty => AppF (TPoly ty) (Type ty) where
   type App ('PK t) h = t
   type App 'PId h = h
   type App ('PSum f g) h = 'TSum (App f h) (App g h)
@@ -68,13 +71,13 @@ instance SemTy ty => SemTy (Type ty) where
   type InterpTy ('TFix p) = Fix (InterpF p)
   type InterpTy (a ':-> b) = InterpTy a -> InterpTy b
 
-pmap :: forall a b (p :: Poly ty). Sing p -> (a -> b) -> App p a -> App p b
+pmap :: forall a b (p :: TPoly ty). Sing p -> (a -> b) -> App p a -> App p b
 pmap SPK{} _f = id
 pmap SPId   f = f
 pmap (SPProd p1 p2) f = (pmap p1 f . fst) &&& (pmap p2 f . snd)
 pmap (SPSum  p1 p2) f = either (Left . pmap p1 f) (Right . pmap p2 f)
 
-wrap :: forall (p :: Poly ty). Sing p
+wrap :: forall (p :: TPoly ty). Sing p
      -> forall a.
           Sing a -> App p (InterpTy a) -> InterpTy (p :@: a)
 wrap SPK{} _ = id
@@ -82,7 +85,7 @@ wrap SPId{} _ = id
 wrap (SPProd p1 p2) a = (wrap p1 a . fst) &&& (wrap p2 a . snd)
 wrap (SPSum p1 p2) a = either (Left . wrap p1 a) (Right . wrap p2 a)
 
-unwrap :: forall (p :: Poly ty). Sing p
+unwrap :: forall (p :: TPoly ty). Sing p
        -> forall a.
             Sing a -> InterpTy (p :@: a) -> App p (InterpTy a)
 unwrap SPK{} _ = id
@@ -90,7 +93,7 @@ unwrap SPId{} _ = id
 unwrap (SPProd p1 p2) a = (unwrap p1 a . fst) &&& (unwrap p2 a . snd)
 unwrap (SPSum p1 p2) a = either (Left . unwrap p1 a) (Right . unwrap p2 a)
 
-wrapp :: forall (p :: Poly ty). Sing p
+wrapp :: forall (p :: TPoly ty). Sing p
       -> forall a. Sing a -> InterpF p (InterpTy a) -> InterpTy (p :@: a)
 wrapp SPK{} _a = Functor.getConst
 wrapp SPId{} _a = Functor.runIdentity
@@ -102,7 +105,7 @@ wrapp (SPSum p1 p2) a = either (Left . wrapp p1 a) (Right . wrapp p2 a) . unSum
     unSum (Functor.InL x) = Left x
     unSum (Functor.InR x) = Right x
 
-unwrapp :: forall (p :: Poly ty). Sing p -> forall a.
+unwrapp :: forall (p :: TPoly ty). Sing p -> forall a.
               Sing a -> InterpTy (p :@: a) -> InterpF p (InterpTy a)
 unwrapp SPK{} _a = Functor.Const
 unwrapp SPId{} _a = Functor.Identity
@@ -159,7 +162,7 @@ evalNat (Ncase x1 x2) a = evalNat x1 a `either` evalNat x2 a
 typeOf :: SingI a => Core t a -> Sing a
 typeOf _ = sing
 
-tfix :: forall (f :: Poly ty). Sing ('TFix f) -> Sing f
+tfix :: forall (f :: TPoly ty). Sing ('TFix f) -> Sing f
 tfix (STFix t) = t
 
 dom :: Sing (a ':-> b) -> Sing a

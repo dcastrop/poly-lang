@@ -42,7 +42,7 @@ data Core t ty
   | Inl
   | Inr
   | Case  (Core t ty) (Core t ty)
-  | Fmap  (Poly ty)   (Core t ty)
+  | Fmap  (TPoly ty)   (Core t ty)
   | Hfmap (Nat t ty)
   | In
   | Out

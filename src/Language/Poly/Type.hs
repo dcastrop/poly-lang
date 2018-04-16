@@ -12,6 +12,7 @@
 {-# LANGUAGE EmptyCase #-}
 module Language.Poly.Type
   ( Poly (..)
+  , TPoly
   , Sing (..)
   , Type (..)
   , (:@:)
@@ -29,10 +30,12 @@ import Data.Singletons.Decide
 
 data Poly ty =
     PId
-  | PK (Type ty)
+  | PK ty
   | PProd (Poly ty) (Poly ty)
   | PSum (Poly ty) (Poly ty)
   deriving Eq
+
+type TPoly ty = Poly (Type ty)
 
 data instance Sing (p :: Poly ty) where
   SPId :: Sing 'PId
@@ -49,7 +52,7 @@ injPProd Refl = (Refl, Refl)
 injPSum :: 'PSum t1 t3 :~: 'PSum t2 t4 -> (t1 :~: t2, t3 :~: t4)
 injPSum Refl = (Refl, Refl)
 
-instance SDecide ty => SDecide (Poly ty) where
+instance SDecide ty => SDecide (TPoly ty) where
   SPId %~ SPId = Proved Refl
   SPK t1 %~ SPK t2 = case t1 %~ t2 of
                         Proved Refl -> Proved Refl
@@ -101,7 +104,7 @@ data Type ty =
   | TPrim ty
   | TProd (Type ty) (Type ty)
   | TSum (Type ty) (Type ty)
-  | TFix (Poly ty)
+  | TFix (TPoly ty)
   | Type ty :-> Type ty
   deriving Eq
 
@@ -194,13 +197,13 @@ instance SingKind ty => SingKind (Type ty) where
 
 infixl 5 :@:
 
-type family (:@:) (p :: Poly ty) (t :: Type ty) :: Type ty where
+type family (:@:) (p :: TPoly ty) (t :: Type ty) :: Type ty where
   'PK c :@: t = c
   'PId :@: t = t
   'PProd p1 p2 :@: t = 'TProd (p1 :@: t) (p2 :@: t)
   'PSum p1 p2 :@: t = 'TSum (p1 :@: t) (p2 :@: t)
 
-app :: forall (ty :: *) (p :: Poly ty) (t :: Type ty). Sing p -> Sing t -> Sing (p :@: t)
+app :: forall (ty :: *) (p :: TPoly ty) (t :: Type ty). Sing p -> Sing t -> Sing (p :@: t)
 app SPId           t = t
 app (SPK c)       _t = c
 app (SPProd p1 p2) t = STProd (p1 `app` t) (p2 `app` t)
@@ -217,31 +220,31 @@ instance Pretty p => Pretty (ParK p)
     pretty (ParK p@TUnit) = pretty p
     pretty (ParK p      ) = Pretty.parens (pretty p)
 
-newtype ParPPL p = ParPPL (Poly p)
+newtype ParPPL p = ParPPL (TPoly p)
 instance Pretty p => Pretty (ParPPL p)
   where
     pretty (ParPPL p@PSum{}) = Pretty.parens (pretty p)
     pretty (ParPPL p) = pretty p
 
-newtype ParPId p = ParPId (Poly p)
+newtype ParPId p = ParPId (TPoly p)
 instance Pretty p => Pretty (ParPId p)
   where
     pretty (ParPId p@PId) = pretty p
     pretty (ParPId p    ) = Pretty.parens (pretty p)
 
-newtype ParPPR p = ParPPR (Poly p)
+newtype ParPPR p = ParPPR (TPoly p)
 instance Pretty p => Pretty (ParPPR p)
   where
     pretty (ParPPR p@PId) = pretty p
     pretty (ParPPR p@PK{}) = pretty p
     pretty (ParPPR p    ) = Pretty.parens (pretty p)
 
-newtype ParSPL p = ParSPL (Poly p)
+newtype ParSPL p = ParSPL (TPoly p)
 instance Pretty p => Pretty (ParSPL p)
   where
     pretty (ParSPL p) = pretty p
 
-newtype ParSPR p = ParSPR (Poly p)
+newtype ParSPR p = ParSPR (TPoly p)
 instance Pretty p => Pretty (ParSPR p)
   where
     pretty (ParSPR p@PSum{}    ) = Pretty.parens (pretty p)
@@ -282,7 +285,7 @@ instance Pretty p => Pretty (ParSR p)
     pretty (ParSR p) = [ppr| p |]
 -- end precedences
 
-instance Pretty ty => Pretty (Poly ty)
+instance Pretty ty => Pretty (TPoly ty)
   where
     pretty PId           = [ppr| "I" |]
     pretty (PK p)        = [ppr| "K" > ParK p |]
