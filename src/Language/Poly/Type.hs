@@ -5,6 +5,7 @@
 {-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE TypeOperators #-}
@@ -13,10 +14,13 @@
 module Language.Poly.Type
   ( Poly (..)
   , TPoly
+  , SPoly
   , Sing (..)
   , Type (..)
+  , SType
   , (:@:)
   , app
+  , appD
   ) where
 
 import Data.Kind hiding ( Type )
@@ -42,6 +46,8 @@ data instance Sing (p :: Poly ty) where
   SPK  :: Sing t -> Sing ('PK t)
   SPProd :: Sing p1 -> Sing p2 -> Sing ('PProd p1 p2)
   SPSum :: Sing p1 -> Sing p2 -> Sing ('PSum p1 p2)
+
+type SPoly (t :: Poly ty) = Sing t
 
 injSPK :: 'PK t1 :~: 'PK t2 -> t1 :~: t2
 injSPK Refl = Refl
@@ -108,6 +114,7 @@ data Type ty =
   | Type ty :-> Type ty
   deriving Eq
 
+
 injPrim :: 'TPrim t1 :~: 'TPrim t2 -> t1 :~: t2
 injPrim Refl = Refl
 
@@ -130,6 +137,8 @@ data instance Sing (t :: Type ty) where
   STSum  :: Sing t1 -> Sing t2 -> Sing ('TSum  t1 t2)
   STFix  :: Sing p  -> Sing ('TFix p)
   STArr  :: Sing t1 -> Sing t2 -> Sing (t1 ':-> t2)
+
+type SType (t :: Type ty) = Sing t
 
 instance SDecide ty => SDecide (Type ty) where
   STUnit     %~ STUnit     = Proved Refl
@@ -157,9 +166,6 @@ instance SDecide ty => SDecide (Type ty) where
       (Disproved f, _)           -> Disproved (\pr -> f (fst $ injArr pr))
       (_, Disproved f)           -> Disproved (\pr -> f (snd $ injArr pr))
   _ %~ _ = Disproved (\pr -> case pr of {}) -- HACK AGAIN! Need to list all cases
-
-
-
 
 
 instance SingI 'TUnit where
@@ -208,6 +214,10 @@ app SPId           t = t
 app (SPK c)       _t = c
 app (SPProd p1 p2) t = STProd (p1 `app` t) (p2 `app` t)
 app (SPSum p1 p2)  t = STSum  (p1 `app` t) (p2 `app` t)
+
+appD :: forall (ty :: *) (p :: TPoly ty) (t :: Type ty). Sing p -> Sing t
+     -> SingInstance (p :@: t)
+appD p t = singInstance (app p t)
 
 --------------------------------------------------------------------------
 -- Pretty printing instances
