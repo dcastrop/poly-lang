@@ -19,6 +19,7 @@ module Language.Poly.Type
   , Type (..)
   , SType
   , (:@:)
+  , (:->)
   , app
   , appD
   ) where
@@ -111,8 +112,10 @@ data Type ty =
   | TProd (Type ty) (Type ty)
   | TSum (Type ty) (Type ty)
   | TFix (TPoly ty)
-  | Type ty :-> Type ty
+  | TArr (Type ty) (Type ty)
   deriving Eq
+
+type (:->) = 'TArr
 
 
 injPrim :: 'TPrim t1 :~: 'TPrim t2 -> t1 :~: t2
@@ -127,7 +130,7 @@ injProd Refl = (Refl, Refl)
 injFix :: 'TFix t1 :~: 'TFix t2 -> t1 :~: t2
 injFix Refl = Refl
 
-injArr :: (t1 ':-> t3) :~: (t2 ':-> t4) -> (t1 :~: t2, t3 :~: t4)
+injArr :: (t1 :-> t3) :~: (t2 :-> t4) -> (t1 :~: t2, t3 :~: t4)
 injArr Refl = (Refl, Refl)
 
 data instance Sing (t :: Type ty) where
@@ -136,7 +139,7 @@ data instance Sing (t :: Type ty) where
   STProd :: Sing t1 -> Sing t2 -> Sing ('TProd t1 t2)
   STSum  :: Sing t1 -> Sing t2 -> Sing ('TSum  t1 t2)
   STFix  :: Sing p  -> Sing ('TFix p)
-  STArr  :: Sing t1 -> Sing t2 -> Sing (t1 ':-> t2)
+  STArr  :: Sing t1 -> Sing t2 -> Sing (t1 :-> t2)
 
 type SType (t :: Type ty) = Sing t
 
@@ -178,7 +181,7 @@ instance (SingI p1, SingI p2) => SingI ('TSum p1 p2) where
   sing = STSum sing sing
 instance SingI p1 => SingI ('TFix p1) where
   sing = STFix sing
-instance (SingI p1, SingI p2) => SingI (p1 ':-> p2) where
+instance (SingI p1, SingI p2) => SingI (p1 :-> p2) where
   sing = STArr sing sing
 
 instance SingKind ty => SingKind (Type ty) where
@@ -189,7 +192,7 @@ instance SingKind ty => SingKind (Type ty) where
   fromSing (STProd t1 t2) = TProd (fromSing t1) (fromSing t2)
   fromSing (STSum t1 t2) = TSum (fromSing t1) (fromSing t2)
   fromSing (STFix p) = TFix (fromSing p)
-  fromSing (STArr t1 t2) = fromSing t1 :-> fromSing t2
+  fromSing (STArr t1 t2) = TArr (fromSing t1) (fromSing t2)
 
   toSing TUnit = SomeSing STUnit
   toSing (TPrim (toSing -> SomeSing t)) = SomeSing $ STPrim t
@@ -198,7 +201,7 @@ instance SingKind ty => SingKind (Type ty) where
   toSing (TSum (toSing -> SomeSing t1) (toSing -> SomeSing t2)) =
       SomeSing $ STSum t1 t2
   toSing (TFix (toSing -> SomeSing p)) = SomeSing $ STFix p
-  toSing ((toSing -> SomeSing t1) :-> (toSing -> SomeSing t2)) =
+  toSing (TArr (toSing -> SomeSing t1) (toSing -> SomeSing t2)) =
       SomeSing $ STArr t1 t2
 
 infixl 5 :@:
@@ -263,20 +266,20 @@ instance Pretty p => Pretty (ParSPR p)
 newtype ParFunL ty = PFL (Type ty)
 instance Pretty ty => Pretty (ParFunL ty)
   where
-    pretty (PFL t@(_t1 :-> _t2)) = Pretty.parens [ppr| t |]
+    pretty (PFL t@(TArr _t1 _t2)) = Pretty.parens [ppr| t |]
     pretty (PFL t)               = [ppr| t |]
 
 newtype ParPL p = ParPL (Type p)
 instance Pretty p => Pretty (ParPL p)
   where
-    pretty (ParPL p@(_t1 :-> _t2)) = Pretty.parens [ppr| p |]
+    pretty (ParPL p@(TArr _t1 _t2)) = Pretty.parens [ppr| p |]
     pretty (ParPL p@TSum{}) = Pretty.parens [ppr| p |]
     pretty (ParPL p) = [ppr| p |]
 
 newtype ParPR p = ParPR (Type p)
 instance Pretty p => Pretty (ParPR p)
   where
-    pretty (ParPR p@(_t1 :-> _t2)) = Pretty.parens [ppr| p |]
+    pretty (ParPR p@(TArr _t1 _t2)) = Pretty.parens [ppr| p |]
     pretty (ParPR p@TSum{}) = Pretty.parens [ppr| p |]
     pretty (ParPR p@TProd{}) = Pretty.parens [ppr| p |]
     pretty (ParPR p) = [ppr| p |]
@@ -284,13 +287,13 @@ instance Pretty p => Pretty (ParPR p)
 newtype ParSL p = ParSL (Type p)
 instance Pretty p => Pretty (ParSL p)
   where
-    pretty (ParSL p@(_t1 :-> _t2)) = Pretty.parens [ppr| p |]
+    pretty (ParSL p@(TArr _t1 _t2)) = Pretty.parens [ppr| p |]
     pretty (ParSL p) = [ppr| p |]
 
 newtype ParSR p = ParSR (Type p)
 instance Pretty p => Pretty (ParSR p)
   where
-    pretty (ParSR p@(_t1 :-> _t2)) = Pretty.parens [ppr| p |]
+    pretty (ParSR p@(TArr _t1 _t2)) = Pretty.parens [ppr| p |]
     pretty (ParSR p@TSum{}) = Pretty.parens [ppr| p |]
     pretty (ParSR p) = [ppr| p |]
 -- end precedences
@@ -309,4 +312,4 @@ instance Pretty ty => Pretty (Type ty)
     pretty (TProd t1 t2) = [ppr| ParPL t1 + "*" + ParPR t2 |]
     pretty (TSum  t1 t2) = [ppr| ParSL t1 + "+" + ParSR t2 |]
     pretty (TFix  p)     = [ppr| "fix" + ParPId p |]
-    pretty (t1 :-> t2)   = [ppr| PFL t1 + "->" + t2|]
+    pretty (TArr t1 t2)  = [ppr| PFL t1 + "->" + t2|]

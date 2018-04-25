@@ -69,7 +69,7 @@ instance SemTy ty => SemTy (Type ty) where
   type InterpTy ('TProd a b) = (InterpTy a, InterpTy b)
   type InterpTy ('TSum a b) = Either (InterpTy a) (InterpTy b)
   type InterpTy ('TFix p) = Fix (InterpF p)
-  type InterpTy (a ':-> b) = InterpTy a -> InterpTy b
+  type InterpTy ('TArr a b) = InterpTy a -> InterpTy b
 
 pmap :: forall a b (p :: TPoly ty). Sing p -> (a -> b) -> App p a -> App p b
 pmap SPK{} _f = id
@@ -165,10 +165,10 @@ typeOf _ = sing
 tfix :: forall (f :: TPoly ty). Sing ('TFix f) -> Sing f
 tfix (STFix t) = t
 
-dom :: Sing (a ':-> b) -> Sing a
+dom :: Sing (a :-> b) -> Sing a
 dom (t1 `STArr` _t2) = t1
 
-cod :: Sing (a ':-> b) -> Sing b
+cod :: Sing (a :-> b) -> Sing b
 cod (_t1 `STArr` t2) = t2
 
 tyLeft  :: Sing (a '`TSum` b) -> Sing a

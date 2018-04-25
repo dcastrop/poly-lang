@@ -37,7 +37,7 @@ data Nat (t :: Type ty -> *) (f :: TPoly ty) (g :: TPoly ty)
            => Nat t f f
 
     NK     :: (SingI a, SingI b)
-           => Core t (a ':-> b)
+           => Core t (a :-> b)
            -> Nat t ('PK a) ('PK b)
 
     Nfst   :: (SingI f, SingI g)
@@ -84,63 +84,63 @@ data Core (t :: Type ty -> *) (a :: Type ty)
           => t a
           -> Core t a
 
-    Curry :: Core t ('TProd a b ':-> c)
-          -> Core t (a ':-> b ':-> c)
+    Curry :: Core t ('TProd a b :-> c)
+          -> Core t (a :-> b :-> c)
 
     Ap :: (SingI a, SingI b)
-       => Core t ('TProd (a ':-> b) a)
+       => Core t ('TProd (a :-> b) a)
        -> Core t b
 
     Const :: (SingI a, SingI b)
           => Core t a
-          -> Core t (b ':-> a)
+          -> Core t (b :-> a)
 
-    Id    :: Core t (a ':-> a)
+    Id    :: Core t (a :-> a)
 
     Comp  :: (SingI a, SingI b, SingI c)
-          => Core t (b ':-> c)
-          -> Core t (a ':-> b)
-          -> Core t (a ':-> c)
+          => Core t (b :-> c)
+          -> Core t (a :-> b)
+          -> Core t (a :-> c)
 
-    Fst   :: Core t ('TProd a b ':-> a)
+    Fst   :: Core t ('TProd a b :-> a)
 
-    Snd   :: Core t ('TProd a b ':-> b)
+    Snd   :: Core t ('TProd a b :-> b)
 
     Split :: (SingI a, SingI b, SingI c)
-          => Core t (a ':-> b)
-          -> Core t (a ':-> c)
-          -> Core t (a ':-> 'TProd b c)
+          => Core t (a :-> b)
+          -> Core t (a :-> c)
+          -> Core t (a :-> 'TProd b c)
 
-    Inl  :: Core t (a ':-> 'TSum a b)
+    Inl  :: Core t (a :-> 'TSum a b)
 
-    Inr  :: Core t (b ':-> 'TSum a b)
+    Inr  :: Core t (b :-> 'TSum a b)
 
     Case :: (SingI a, SingI b, SingI c)
-         => Core t (b ':-> a)
-         -> Core t (c ':-> a)
-         -> Core t ('TSum b c ':-> a)
+         => Core t (b :-> a)
+         -> Core t (c :-> a)
+         -> Core t ('TSum b c :-> a)
 
     Fmap  :: (SingI a, SingI b, SingI f)
           => Sing f
-          -> Core t (a ':-> b)
-          -> Core t (f :@: a ':-> f :@: b)
+          -> Core t (a :-> b)
+          -> Core t (f :@: a :-> f :@: b)
 
     Hfmap :: (SingI a, SingI f, SingI g)
           => Nat t f g
           -> Sing a
-          -> Core t (f :@: a ':-> g :@: a)
+          -> Core t (f :@: a :-> g :@: a)
 
     In   :: SingI f
-         => Core t (f :@: 'TFix f ':-> 'TFix f)
+         => Core t (f :@: 'TFix f :-> 'TFix f)
 
     Out  :: SingI f
-         => Core t ('TFix f ':-> f :@: 'TFix f)
+         => Core t ('TFix f :-> f :@: 'TFix f)
 
     Rec  :: (SingI a, SingI b, SingI f, SingI g)
-         => Core t (g :@: b ':-> b)
+         => Core t (g :@: b :-> b)
          -> Nat t f g
-         -> Core t (a ':-> f :@: a)
-         -> Core t (a ':-> b)
+         -> Core t (a :-> f :@: a)
+         -> Core t (a :-> b)
 
 instance Erasure ty t e => Erasure ty (Core t) (C.Core e) where
   erase Unit          = C.Unit
@@ -164,7 +164,7 @@ instance Erasure ty t e => Erasure ty (Core t) (C.Core e) where
 
 getDom :: forall ty t (a :: Type ty) (b :: Type ty).
          (SingKind ty, SingI a, SingI b)
-       => Core t (a ':-> b) -> Type (DemoteRep ty)
+       => Core t (a :-> b) -> Type (DemoteRep ty)
 getDom _ = fromSing (sing :: Sing a)
 
 instance TC ty t e => TC ty (Core t) (C.Core e) where
