@@ -19,6 +19,8 @@ dependencies:
 - prettyprinter >= 1.1 && < 1.2
 - quoted-prettyprinter >= 0.1 && < 0.2
 - mtl >= 2.2.1 && < 2.3
+- constrained-control >= 0.1 && < 0.2
+- constraints >= 0.9 && < 1.0
 
 library:
   source-dirs: src
