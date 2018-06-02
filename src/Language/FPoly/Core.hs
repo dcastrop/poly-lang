@@ -35,7 +35,7 @@ import Language.FPoly.Type
 
 infixr 4 :->
 
-type CC (a :: *) = Typeable a
+type CC = Typeable
 
 class Show a => Value a where
 
@@ -101,7 +101,7 @@ data Core (a :: *)
     Get :: (CC a)
         => Core ((Int, Vec a) -> a)
 
-    Fmap  :: (CC a, CC b)
+    Fmap  :: (CC a, CC b, IsC CC f a, IsC CC f b)
           => SPoly f
           -> a :-> b
           -> Core (f :@: a -> f :@: b)
@@ -146,6 +146,19 @@ pattern SndF = Fun Snd
 ap :: (a -> b, a) -> b
 ap (f, x) = f x
 
+data DictPoly f a b where
+  DictPoly :: (IsC NoConstraint f a, IsC NoConstraint f b) => DictPoly f a b
+
+noConstraintF :: forall f a b. Core (a -> b) -> SPoly f -> DictPoly f a b
+noConstraintF _ FId = DictPoly
+noConstraintF _ (FK _) = DictPoly
+noConstraintF a (FProd p q) =
+  case (noConstraintF a p, noConstraintF a q) of
+    (DictPoly, DictPoly) -> DictPoly
+noConstraintF a (FSum p q) =
+  case (noConstraintF a p, noConstraintF a q) of
+    (DictPoly, DictPoly) -> DictPoly
+
 interp :: Core t -> t
 interp Unit = ()
 interp (Val x) = x
@@ -165,25 +178,29 @@ interp (Vect (repr -> f) n) = Vec . map (interp f) . repl (interp n)
   where
     repl i a = [ (j, a) | j <- [0..i] ]
 interp Get = uncurry proj
-interp (Fmap p (repr -> f)) = pmap p $ interp f
+interp (Fmap p (repr -> f)) =
+  case noConstraintF f p of
+    DictPoly -> pmap p $ interp f
 interp In = roll
 interp Out = unroll
-interp (Rec p (repr -> f) (repr -> g)) = h
+interp r@(Rec p (repr -> f) (repr -> g)) = h
   where
     h = ef . go h . eg
     ef = interp f
     eg = interp g
-    go = pmap p
+    go = case noConstraintF r p of
+            DictPoly -> pmap p
 
 instance Value a => Const a (:->) where
   const = Fun . Const . Val
 
 instance Category (:->) where
-  type C (:->) a = CC a
+  type C (:->) = CC
   id = Fun Id
   f . g = Fun (f `Comp` g)
 
 instance Arrow (:->) where
+  pairDict = CDict
   arr s f = Fun $ Prim s f
   fst = Fun Fst
   snd = Fun Snd
@@ -193,6 +210,7 @@ instance Arrow (:->) where
   second f = Fun $ Split fst (f . snd)
 
 instance ArrowChoice (:->) where
+  eitherDict = CDict
   inl = Fun Inl
   inr = Fun Inr
   left f = Fun $ Case (inl . f) inr

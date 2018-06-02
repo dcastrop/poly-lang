@@ -27,9 +27,12 @@ module Language.FPoly.Type
   , proj
   ) where
 
+import Prelude hiding ( id )
+
 import Data.Kind
 
-import Control.Arrow
+import Control.Constrained.Category
+import Control.Constrained.Arrow
 import Data.Typeable
 import Data.Text.Prettyprint.Doc ( Pretty(..) )
 import Data.Text.Prettyprint.EDoc
@@ -42,9 +45,6 @@ data Poly ty =
   | PProd (Poly ty) (Poly ty)
   | PSum (Poly ty) (Poly ty)
   deriving Eq
-
-class NoConstraint a where
-instance NoConstraint a where
 
 class Polynomial p where
   type (:+:) (a :: p) (b :: p) :: p
@@ -69,6 +69,15 @@ data instance Sing (t :: Poly Type) where
   FProd :: Sing a -> Sing b -> Sing ('PProd a b :: Poly Type)
   FSum  :: Sing a -> Sing b -> Sing ('PSum  a b :: Poly Type)
 
+instance SingI ('PId :: Poly Type) where
+  sing = FId
+instance Typeable a => SingI ('PK a :: Poly Type) where
+  sing = FK PType
+instance (SingI a, SingI b) => SingI ('PProd a b :: Poly Type) where
+  sing = FProd sing sing
+instance (SingI a, SingI b) => SingI ('PSum a b :: Poly Type) where
+  sing = FSum sing sing
+
 type SPoly (t :: Poly Type) = Sing t
 
 instance Pretty (SPoly p) where
@@ -81,17 +90,16 @@ infixl 5 :@:
 
 type family (:@:) (a :: Poly Type) (b :: Type) :: Type where
   'PId :@: x = x
-  ('PK y) :@: _ = y
-  ('PProd f g) :@: x = (f :@: x, g :@: x)
-  ('PSum f g) :@: x = Either (f :@: x) (g :@: x)
+  'PK y :@: _ = y
+  'PProd f g :@: x = (f :@: x, g :@: x)
+  'PSum f g :@: x = Either (f :@: x) (g :@: x)
 
-
-pmap :: forall a b (f :: Poly Type). SPoly f -> (a -> b) -> f :@: a -> f :@: b
+pmap :: forall a b f t. (ArrowChoice t, IsC (C t) f a, IsC (C t) f b)
+     => SPoly f -> t a b -> t (f :@: a) (f :@: b)
 pmap FId f = f
 pmap (FK _) _ = id
 pmap (FProd p q) f = pmap p f *** pmap q f
 pmap (FSum p q) f = pmap p f +++ pmap q f
-
 
 type family IsC (c :: Type -> Constraint) (a :: Poly Type) (b :: Type)  :: Constraint where
   IsC c 'PId  x = c x
