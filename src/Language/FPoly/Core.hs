@@ -2,6 +2,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -28,9 +29,12 @@ import Prelude hiding ( id, (.), fst, snd, const )
 
 import Control.Constrained.Arrow
 import Control.Constrained.Category
+import Control.Constrained.Vector
 import Data.Typeable
+import Data.Type.Natural
 import Data.Text.Prettyprint.Doc ( Pretty(..) )
 import Data.Text.Prettyprint.EDoc
+import Data.Word
 import Language.FPoly.Type
 
 infixr 4 :->
@@ -92,14 +96,16 @@ data Core (a :: *)
          -> c :-> a
          -> Core (Either b c -> a)
 
-    -- Vector operations isomorphic to products: split, proj, etc..
-    Vect :: (CC a, CC b)
-         => (Int, a) :-> b
-         -> Core Int
-         -> Core (a -> Vec b)
+    -- Vector operations isomorphic to products of n elements
+    -- without type-safety: split = vect, proj = get
+    Vect :: (CC a, CC b, SingI n)
+         => Idx n
+         -> (Word32, a) :-> b
+         -> Core (a -> Vec n b)
 
     Get :: (CC a)
-        => Core ((Int, Vec a) -> a)
+        => Idx n
+        -> Core (Vec ('S n) a -> a)
 
     Fmap  :: (CC a, CC b, IsC CC f a, IsC CC f b)
           => SPoly f
@@ -174,10 +180,8 @@ interp (Split (repr -> f) (repr -> g)) = interp f &&& interp g
 interp Inl = Left
 interp Inr = Right
 interp (Case (repr -> f) (repr -> g)) = interp f ||| interp g
-interp (Vect (repr -> f) n) = Vec . map (interp f) . repl (interp n)
-  where
-    repl i a = [ (j, a) | j <- [0..i] ]
-interp Get = uncurry proj
+interp (Vect i (repr -> f)) = vgen i (interp f)
+interp (Get i) = vproj i
 interp (Fmap p (repr -> f)) =
   case noConstraintF f p of
     DictPoly -> pmap p $ interp f
@@ -218,6 +222,12 @@ instance ArrowChoice (:->) where
   f +++ g = Fun $ Case (inl . f) (inr . g)
   f ||| g = Fun $ Case f g
 
+instance ArrowVector (:->) where
+  vecDict = CDict
+  zDict = CDict
+  sDict = CDict
+  vproj = Fun . Get
+  vgen i = Fun . Vect i
 
 instance Pretty (a :-> b) where
   pretty (Fun f) = pretty f
@@ -237,8 +247,8 @@ instance Pretty (Core a) where
   pretty Inl = [ppr| "inl" |]
   pretty Inr = [ppr| "inr" |]
   pretty (Case f g) = [ppr| f + "|||" + g |]
-  pretty (Vect f n) = [ppr| "vec" + n + "(" > f > ")" |]
-  pretty Get = [ppr| "get" |]
+  pretty (Vect i f) = [ppr| "vec " + show i + " (" > f > ")" |]
+  pretty (Get i) = [ppr| "proj " > show i  |]
   pretty (Fmap p f) = [ppr| p + "(" > f > ")" |]
   pretty In = [ppr| "roll" |]
   pretty Out = [ppr| "unroll" |]

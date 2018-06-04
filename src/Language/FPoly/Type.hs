@@ -10,6 +10,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE QuasiQuotes #-}
 module Language.FPoly.Type
   ( Poly (..)
@@ -23,21 +24,24 @@ module Language.FPoly.Type
   , I
   , K
   , pmap
-  , Vec(..)
+  , Idx
+  , idx
+  , Vec
+  , vec
   , proj
   ) where
 
-import Prelude hiding ( id )
+import Prelude hiding ( id, (.) )
 
 import Data.Kind
 
 import Control.Constrained.Category
 import Control.Constrained.Arrow
+import Control.Constrained.Vector
 import Data.Typeable
+import Data.Type.Natural
 import Data.Text.Prettyprint.Doc ( Pretty(..) )
 import Data.Text.Prettyprint.EDoc
-
-import Data.Singletons
 
 data Poly ty =
     PId
@@ -101,7 +105,10 @@ pmap (FK _) _ = id
 pmap (FProd p q) f = pmap p f *** pmap q f
 pmap (FSum p q) f = pmap p f +++ pmap q f
 
-type family IsC (c :: Type -> Constraint) (a :: Poly Type) (b :: Type)  :: Constraint where
+type family IsC (c :: Type -> Constraint)
+                (a :: Poly Type)
+                (b :: Type)
+                :: Constraint where
   IsC c 'PId  x = c x
   IsC c ('PK y)  _ = c y
   IsC c ('PProd f g) x = (c (f :@: x), c (g :@: x), IsC c f x, IsC c g x)
@@ -118,8 +125,3 @@ instance Data ('PSum ('PK ())  ('PProd ('PK a) 'PId)) [a] where
   unroll [] = Left ()
   unroll (x:xs) = Right (x,xs)
 
-
-newtype Vec a = Vec [a]
-
-proj :: Int -> Vec a -> a
-proj i (Vec l) = l !! i

@@ -21,6 +21,7 @@ dependencies:
 - mtl >= 2.2.1 && < 2.3
 - constrained-control >= 0.1 && < 0.2
 - constraints >= 0.9 && < 1.0
+- type-natural >= 0.8 && < 0.9
 
 library:
   source-dirs: src
