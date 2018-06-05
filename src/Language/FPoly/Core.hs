@@ -1,3 +1,4 @@
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -12,6 +13,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Language.FPoly.Core
   ( Core
   , pattern IdF
@@ -25,7 +27,7 @@ module Language.FPoly.Core
   , (:->)(..)
   ) where
 
-import Prelude hiding ( id, (.), fst, snd, const )
+import Prelude hiding ( id, (.), fst, snd, const, curry )
 
 import Control.Constrained.Arrow
 import Control.Constrained.Category
@@ -34,7 +36,6 @@ import Data.Typeable
 import Data.Type.Natural
 import Data.Text.Prettyprint.Doc ( Pretty(..) )
 import Data.Text.Prettyprint.EDoc
-import Data.Word
 import Language.FPoly.Type
 
 infixr 4 :->
@@ -61,8 +62,7 @@ data Core (a :: *)
           => (a, b) :-> c
           -> Core (a -> b -> c)
 
-    Ap :: Core (a -> b, a)
-       -> Core b
+    Ap :: Core ((a :-> b, a) -> b)
 
     Const :: Core a
           -> Core (b -> a)
@@ -98,14 +98,14 @@ data Core (a :: *)
 
     -- Vector operations isomorphic to products of n elements
     -- without type-safety: split = vect, proj = get
-    Vect :: (CC a, CC b, SingI n)
-         => Idx n
-         -> (Word32, a) :-> b
+    Vect :: (CC a, CC b)
+         => SNat n
+         -> (Mod n -> a :-> b)
          -> Core (a -> Vec n b)
 
-    Get :: (CC a)
-        => Idx n
-        -> Core (Vec ('S n) a -> a)
+    Get :: (CC a, SingI m)
+        => Mod m
+        -> Core (Vec m a -> a)
 
     Fmap  :: (CC a, CC b, IsC CC f a, IsC CC f b)
           => SPoly f
@@ -169,7 +169,7 @@ interp :: Core t -> t
 interp Unit = ()
 interp (Val x) = x
 interp (Prim _ f) = f
-interp (Ap x) = ap $ interp x
+interp Ap = ap . \(f, x) -> (interp . repr $ f, x)
 interp (Curry (repr -> f)) = curry (interp f)
 interp (Const v) = const $ interp v
 interp Id = id
@@ -180,7 +180,7 @@ interp (Split (repr -> f) (repr -> g)) = interp f &&& interp g
 interp Inl = Left
 interp Inr = Right
 interp (Case (repr -> f) (repr -> g)) = interp f ||| interp g
-interp (Vect i (repr -> f)) = vgen i (interp f)
+interp (Vect i nf) = vgen i (interp . repr . nf)
 interp (Get i) = vproj i
 interp (Fmap p (repr -> f)) =
   case noConstraintF f p of
@@ -222,12 +222,24 @@ instance ArrowChoice (:->) where
   f +++ g = Fun $ Case (inl . f) (inr . g)
   f ||| g = Fun $ Case f g
 
+data IsTyp (a :: k) where
+  IsTyp :: Typeable a => Proxy a -> IsTyp a
+
+isTyNat :: SNat n -> IsTyp n
+isTyNat SZ = IsTyp Proxy
+isTyNat (SS n) = case isTyNat n of
+                   IsTyp Proxy -> IsTyp Proxy
+
 instance ArrowVector (:->) where
   vecDict = CDict
-  zDict = CDict
-  sDict = CDict
+  natDict n = case isTyNat n of
+                IsTyp Proxy -> CDict
   vproj = Fun . Get
-  vgen i = Fun . Vect i
+  vgen i f = Fun (Vect i f)
+
+instance ArrowApply (:->) where
+  arrDict = CDict
+  app = Fun Ap
 
 instance Pretty (a :-> b) where
   pretty (Fun f) = pretty f
@@ -236,7 +248,7 @@ instance Pretty (Core a) where
   pretty Unit = [ppr| "()" |]
   pretty (Val x) = [ppr| show x |]
   pretty (Prim s _) = [ppr| s |]
-  pretty (Ap x) = [ppr| "ap" + "(" > x > ")" |]
+  pretty Ap = [ppr| "ap" |]
   pretty (Curry f) =  [ppr| "curry" + "(" > f > ")" |]
   pretty (Const v) = [ppr| "const" + "(" > v > ")" |]
   pretty Id =  [ppr| "id" |]
@@ -247,8 +259,11 @@ instance Pretty (Core a) where
   pretty Inl = [ppr| "inl" |]
   pretty Inr = [ppr| "inr" |]
   pretty (Case f g) = [ppr| f + "|||" + g |]
-  pretty (Vect i f) = [ppr| "vec " + show i + " (" > f > ")" |]
-  pretty (Get i) = [ppr| "proj " > show i  |]
+  pretty (Vect i _) = [ppr| "vec " + show i + " (<functions>)" |]
+  pretty (Get i) = [ppr| "proj " > showIdx i  |]
+    where
+      showIdx :: forall m. Mod m -> String
+      showIdx (ModS l) = show $ (sNatToInt (toNat l) :: Int)
   pretty (Fmap p f) = [ppr| p + "(" > f > ")" |]
   pretty In = [ppr| "roll" |]
   pretty Out = [ppr| "unroll" |]

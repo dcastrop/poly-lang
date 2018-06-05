@@ -24,11 +24,6 @@ module Language.FPoly.Type
   , I
   , K
   , pmap
-  , Idx
-  , idx
-  , Vec
-  , vec
-  , proj
   ) where
 
 import Prelude hiding ( id, (.) )
@@ -37,7 +32,6 @@ import Data.Kind
 
 import Control.Constrained.Category
 import Control.Constrained.Arrow
-import Control.Constrained.Vector
 import Data.Typeable
 import Data.Type.Natural
 import Data.Text.Prettyprint.Doc ( Pretty(..) )
@@ -124,4 +118,3 @@ instance Data ('PSum ('PK ())  ('PProd ('PK a) 'PId)) [a] where
 
   unroll [] = Left ()
   unroll (x:xs) = Right (x,xs)
-
