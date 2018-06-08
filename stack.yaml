@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: lts-9.21
+resolver: nightly-2018-06-08
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -40,11 +40,12 @@ packages:
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
-- https://github.com/dcastrop/quoted-prettyprinter/archive/v0.1.1.zip
-- ../../tcontrol/code
-- type-natural-0.8.1.0
-- equational-reasoning-0.5.1.0
-- ghc-typelits-presburger-0.2.0.0
+- git: https://github.com/dcastrop/quoted-prettyprinter
+  commit: e6e9b6363e8067d2961d4e600501d7137242c387
+- git: https://github.com/dcastrop/constrained-control
+  commit: 95f74006bb1cd5be2ad1b5ab516a335d22b355ad
+- git: https://github.com/dcastrop/IVector
+  commit: 62ea8e95d08b24d729f26b0dd921c8b03267ca2a
 
 # Override default flag values for local packages and extra-deps
 flags: {}

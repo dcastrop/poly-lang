@@ -13,15 +13,14 @@ synopsis:            Deep embedding of a point-free language based on Polynomial
 # category:            Web
 description:         Please see the README on Github at <https://github.com/dcastrop/DPoly#readme>
 dependencies:
-- base >= 4.7 && < 5
-- type-combinators >= 0.2.4 && < 0.3
-- singletons >= 2.2 && < 2.3
-- prettyprinter >= 1.1 && < 1.2
+- base >= 4.9 && < 5
+- singletons >= 2.4 && < 2.5
+- prettyprinter >= 1.2 && < 1.3
 - quoted-prettyprinter >= 0.1 && < 0.2
 - mtl >= 2.2.1 && < 2.3
 - constrained-control >= 0.1 && < 0.2
-- constraints >= 0.9 && < 1.0
-- type-natural >= 0.8 && < 0.9
+- constraints >= 0.10 && < 0.11
+- ivector >= 0.1 && < 0.2
 
 library:
   source-dirs: src

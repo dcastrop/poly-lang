@@ -1,193 +1,270 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeInType #-}
-{-# LANGUAGE TypeOperators #-}
 module Language.Poly.Core
-( Core (..)
-, Nat(..)
-, getType
-, getTypeS
-) where
+  ( Core
+  , pattern IdF
+  , pattern InlF
+  , pattern InrF
+  , pattern SplitF
+  , pattern CaseF
+  , pattern FstF
+  , pattern SndF
+  , interp
+  , (:->)(..)
+  ) where
 
-import Data.Kind hiding ( Type )
-import Data.Singletons
-  ( Sing
-  , SingI (..)
-  , fromSing
-  , DemoteRep
-  , SingKind )
-import Data.Text.Prettyprint.Doc ( Pretty, pretty )
+import Prelude hiding ( id, (.), fst, snd, const, curry )
 
-import Language.Poly.Erasure
-import Language.Poly.TypeCheck
-import qualified Language.Poly.UCore as C
+import Control.Constrained.Arrow
+import Control.Constrained.Category
+import Control.Constrained.ArrowVector
+import Data.Singletons.TypeLits
+import Data.Typeable
+import Data.Type.Vector ( Vec )
+import qualified Data.Type.Vector as Vec
+import Data.Type.Mod
+import Data.Text.Prettyprint.Doc ( Pretty(..) )
+import Data.Text.Prettyprint.EDoc
 import Language.Poly.Type
 
--- forall a. f a ~> g a
-data Nat (t :: Type ty -> *) (f :: TPoly ty) (g :: TPoly ty)
+infixr 4 :->
+
+type CC = Typeable
+
+class Show a => Value a where
+
+instance Show a => Value a where
+
+data Core (a :: *)
   where
-    Nid    :: SingI f
-           => Nat t f f
+    Unit  :: Core ()
 
-    NK     :: (SingI a, SingI b)
-           => Core t (a :-> b)
-           -> Nat t ('PK a) ('PK b)
+    Val   :: Value a
+          => a
+          -> Core a
 
-    Nfst   :: (SingI f, SingI g)
-           => Nat t ('PProd f g) f
+    Prim  :: String -- XXX: name of the "primitive function"
+          -> a -- Semantics in Haskell of the primitive function
+          -> Core a
 
-    Nsnd   :: (SingI f, SingI g)
-           => Nat t ('PProd f g) g
+    Curry :: (CC a, CC b, CC c)
+          => (a, b) :-> c
+          -> Core (a -> b -> c)
 
-    Nsplit :: (SingI f, SingI g, SingI h)
-           => Nat t f g
-           -> Nat t f h
-           -> Nat t f ('PProd g h)
+    Ap :: Core ((a :-> b, a) -> b)
 
-    Ninl   :: (SingI f, SingI g)
-           => Nat t f ('PSum f g)
+    Const :: Core a
+          -> Core (b -> a)
 
-    Ninr   :: (SingI f, SingI g)
-           => Nat t g ('PSum f g)
+    Id    :: Core (a -> a)
 
-    Ncase  :: (SingI f, SingI g, SingI h)
-           => Nat t g f
-           -> Nat t h f
-           -> Nat t ('PSum g h) f
+    Comp  :: (CC b, CC c, CC a)
+          => b :-> c
+          -> a :-> b
+          -> Core (a -> c)
 
-eraseNat :: forall ty (t :: Type ty -> *) (f :: TPoly ty) (g :: TPoly ty) e.
-           SingKind ty
-         => Erasure ty t e
-         => Nat t f g
-         -> C.Nat e (DemoteRep ty)
-eraseNat Nid          = C.Nid
-eraseNat (NK f)       = C.NK (erase f)
-eraseNat Nfst         = C.Nfst
-eraseNat Nsnd         = C.Nsnd
-eraseNat (Nsplit f g) = C.Nsplit (eraseNat f) (eraseNat g)
-eraseNat Ninl         = C.Ninl
-eraseNat Ninr         = C.Ninr
-eraseNat (Ncase f g)  = C.Ncase (eraseNat f) (eraseNat g)
+    Fst   :: (CC b, CC a)
+          => Core ((a, b) -> a)
 
-data Core (t :: Type ty -> *) (a :: Type ty)
+    Snd   :: (CC a, CC b)
+          => Core ((a, b) -> b)
+
+    Split :: (CC a, CC b, CC c)
+          => a :-> b
+          -> a :-> c
+          -> Core (a -> (b, c))
+
+    Inl  :: (CC a, CC b)
+          => Core (a -> Either a b)
+
+    Inr  :: (CC a, CC b)
+          => Core (b -> Either a b)
+
+    Case ::(CC a, CC b, CC c)
+         => b :-> a
+         -> c :-> a
+         -> Core (Either b c -> a)
+
+    -- Vector operations isomorphic to products of n elements
+    -- without type-safety: split = vect, proj = get
+    Vect :: (CC a, CC b)
+         => SNat n
+         -> (TMod n -> a :-> b)
+         -> Core (a -> Vec n b)
+
+    Get :: (CC a, KnownNat m)
+        => TMod m
+        -> Core (Vec m a -> a)
+
+    Fmap  :: (CC a, CC b, IsC CC f a, IsC CC f b)
+          => SPoly f
+          -> a :-> b
+          -> Core (f :@: a -> f :@: b)
+
+    In   :: Data f t
+         => Core (f :@: t -> t)
+
+    Out  :: Data f t
+         => Core (t -> f :@: t)
+
+    Rec  :: (CC a, CC b, CC (f :@: a), CC (f :@: b))
+         => SPoly f
+         -> f :@: b :-> b
+         -> a :-> f :@: a
+         -> Core (a -> b)
+
+newtype (:->) a b = Fun { repr :: Core (a -> b) }
+
+pattern IdF :: forall i o. (CC i, CC o) => forall a. (i ~ a, o ~ a) => i :-> o
+pattern IdF = Fun Id
+
+pattern InlF :: forall i o. (CC i, CC o) => forall a b. (i ~ a, o ~ Either a b, CC a, CC b) => i :-> o
+pattern InlF = Fun Inl
+
+pattern InrF :: forall i o. (CC i, CC o) => forall a b. (i ~ a, o ~ Either b a, CC a, CC b) => i :-> o
+pattern InrF = Fun Inr
+
+pattern SplitF :: forall i o. (CC i, CC o) => forall a b c. (i ~ a, o ~ (b,c), CC b, CC c)
+               => a :-> b -> a :-> c -> i :-> o
+pattern SplitF a b = Fun (Split a b)
+
+pattern CaseF :: forall i o. (CC i, CC o) => forall a b c. (i ~ Either a b, o ~ c, CC a, CC b)
+              => a :-> c -> b :-> c -> i :-> o
+pattern CaseF a b = Fun (Case a b)
+
+pattern FstF :: forall i o. (CC i, CC o) => forall a b. (i ~ (a,b), o ~ a, CC a, CC b) => i :-> o
+pattern FstF = Fun Fst
+
+pattern SndF :: forall i o. (CC i, CC o) => forall a b. (i ~ (a,b), o ~ b, CC b, CC a) => i :-> o
+pattern SndF = Fun Snd
+
+ap :: (a -> b, a) -> b
+ap (f, x) = f x
+
+data DictPoly f a b where
+  DictPoly :: (IsC NoConstraint f a, IsC NoConstraint f b) => DictPoly f a b
+
+noConstraintF :: forall f a b. Core (a -> b) -> SPoly f -> DictPoly f a b
+noConstraintF _ FId = DictPoly
+noConstraintF _ (FK _) = DictPoly
+noConstraintF a (FProd p q) =
+  case (noConstraintF a p, noConstraintF a q) of
+    (DictPoly, DictPoly) -> DictPoly
+noConstraintF a (FSum p q) =
+  case (noConstraintF a p, noConstraintF a q) of
+    (DictPoly, DictPoly) -> DictPoly
+
+interp :: Core t -> t
+interp Unit = ()
+interp (Val x) = x
+interp (Prim _ f) = f
+interp Ap = ap . \(f, x) -> (interp . repr $ f, x)
+interp (Curry (repr -> f)) = curry (interp f)
+interp (Const v) = const $ interp v
+interp Id = id
+interp (Comp (repr -> f) (repr -> g)) = interp f . interp g
+interp Fst = fst
+interp Snd = snd
+interp (Split (repr -> f) (repr -> g)) = interp f &&& interp g
+interp Inl = Left
+interp Inr = Right
+interp (Case (repr -> f) (repr -> g)) = interp f ||| interp g
+interp (Vect i nf) = Vec.vec i interpnf
   where
-    Unit  :: Core t 'TUnit
+    interpnf = interp . repr . nf
+interp (Get i) = proj i
+interp (Fmap p (repr -> f)) =
+  case noConstraintF f p of
+    DictPoly -> pmap p $ interp f
+interp In = roll
+interp Out = unroll
+interp r@(Rec p (repr -> f) (repr -> g)) = h
+  where
+    h = ef . go h . eg
+    ef = interp f
+    eg = interp g
+    go = case noConstraintF r p of
+            DictPoly -> pmap p
 
-    Prim  :: SingI a
-          => t a
-          -> Core t a
+instance Value a => Const a (:->) where
+  const = Fun . Const . Val
 
-    Curry :: Core t ('TProd a b :-> c)
-          -> Core t (a :-> b :-> c)
+instance Category (:->) where
+  type C (:->) = CC
+  id = Fun Id
+  f . g = Fun (f `Comp` g)
 
-    Ap :: (SingI a, SingI b)
-       => Core t ('TProd (a :-> b) a)
-       -> Core t b
+instance Arrow (:->) where
+  pairDict = CDict
+  arr s f = Fun $ Prim s f
+  fst = Fun Fst
+  snd = Fun Snd
+  (***) f g = Fun $ Split (f . fst) (g . snd)
+  (&&&) f g = Fun $ Split f g
+  first f = Fun $ Split (f . fst) snd
+  second f = Fun $ Split fst (f . snd)
 
-    Const :: (SingI a, SingI b)
-          => Core t a
-          -> Core t (b :-> a)
+instance ArrowChoice (:->) where
+  eitherDict = CDict
+  inl = Fun Inl
+  inr = Fun Inr
+  left f = Fun $ Case (inl . f) inr
+  right f = Fun $ Case inl (inr . f)
+  f +++ g = Fun $ Case (inl . f) (inr . g)
+  f ||| g = Fun $ Case f g
 
-    Id    :: Core t (a :-> a)
+data IsTyp (a :: k) where
+  IsTyp :: Typeable a => Proxy a -> IsTyp a
 
-    Comp  :: (SingI a, SingI b, SingI c)
-          => Core t (b :-> c)
-          -> Core t (a :-> b)
-          -> Core t (a :-> c)
+isTyNat :: SNat n -> IsTyp n
+isTyNat n = withKnownNat n $ IsTyp Proxy
 
-    Fst   :: Core t ('TProd a b :-> a)
+instance ArrowVector (:->) where
+  vecDict = CDict
+  natDict n = case isTyNat n of
+                IsTyp Proxy -> CDict
+  proj = Fun . Get
+  vec i f = Fun (Vect i f)
 
-    Snd   :: Core t ('TProd a b :-> b)
+instance ArrowApply (:->) where
+  arrDict = CDict
+  app = Fun Ap
 
-    Split :: (SingI a, SingI b, SingI c)
-          => Core t (a :-> b)
-          -> Core t (a :-> c)
-          -> Core t (a :-> 'TProd b c)
+instance Pretty (a :-> b) where
+  pretty (Fun f) = pretty f
 
-    Inl  :: Core t (a :-> 'TSum a b)
-
-    Inr  :: Core t (b :-> 'TSum a b)
-
-    Case :: (SingI a, SingI b, SingI c)
-         => Core t (b :-> a)
-         -> Core t (c :-> a)
-         -> Core t ('TSum b c :-> a)
-
-    Fmap  :: (SingI a, SingI b, SingI f)
-          => Sing f
-          -> Core t (a :-> b)
-          -> Core t (f :@: a :-> f :@: b)
-
-    Hfmap :: (SingI a, SingI f, SingI g)
-          => Nat t f g
-          -> Sing a
-          -> Core t (f :@: a :-> g :@: a)
-
-    In   :: SingI f
-         => Core t (f :@: 'TFix f :-> 'TFix f)
-
-    Out  :: SingI f
-         => Core t ('TFix f :-> f :@: 'TFix f)
-
-    Rec  :: (SingI a, SingI b, SingI f, SingI g)
-         => Core t (g :@: b :-> b)
-         -> Nat t f g
-         -> Core t (a :-> f :@: a)
-         -> Core t (a :-> b)
-
-instance Erasure ty t e => Erasure ty (Core t) (C.Core e) where
-  erase Unit          = C.Unit
-  erase (Prim p)      = C.Prim (erase p)
-  erase (Const x)     = C.Const (erase x)
-  erase Id            = C.Id
-  erase (Curry f)     = C.Curry (erase f)
-  erase (Ap fx)       = C.Ap (erase fx)
-  erase (Comp f g)    = C.Comp (getDom f) (erase f) (erase g)
-  erase Fst           = C.Fst
-  erase Snd           = C.Snd
-  erase (Split f g)   = erase f `C.Split` erase g
-  erase Inl           = C.Inl
-  erase Inr           = C.Inr
-  erase (Case f g)    = erase f `C.Case` erase g
-  erase (Fmap p f)    = C.Fmap (fromSing p) (erase f)
-  erase (Hfmap n _ty) = C.Hfmap (eraseNat n)
-  erase In            = C.In
-  erase Out           = C.Out
-  erase (Rec g n h)   = C.Rec (erase g) (eraseNat n) (erase h)
-
-getDom :: forall ty t (a :: Type ty) (b :: Type ty).
-         (SingKind ty, SingI a, SingI b)
-       => Core t (a :-> b) -> Type (DemoteRep ty)
-getDom _ = fromSing (sing :: Sing a)
-
-instance TC ty t e => TC ty (Core t) (C.Core e) where
-  typeCheck C.Unit = return (Unit ::: STUnit)
-  typeCheck (C.Prim p) = do (tp ::: t) <- typeCheck p
-                            return (Prim tp ::: t)
---  typeCheck (C.Const c) = do (tc ::: t) <- typeCheck c
---                             return (Const tc ::: )
-
-instance forall ty (t :: Type ty -> *) (a :: Type ty) e.
-             ( Erasure ty t e
-             , Pretty (DemoteRep ty)
-             , Pretty (e (DemoteRep ty))
-             , SingKind ty)
-           => Pretty (Core t a) where
-  pretty = pretty . erase
-
-getTypeS :: forall (ty :: *) (p :: Type ty -> *) (t :: Type ty).
-              (SingI t, SingKind ty) =>
-                  Core p t -> Sing t
-getTypeS _ = sing
-
-getType :: forall (ty :: *) (p :: Type ty -> *) (t :: Type ty).
-              (SingI t, SingKind ty) =>
-                  Core p t -> Type (DemoteRep ty)
-getType _ = fromSing (sing :: Sing t)
+instance Pretty (Core a) where
+  pretty Unit = [ppr| "()" |]
+  pretty (Val x) = [ppr| show x |]
+  pretty (Prim s _) = [ppr| s |]
+  pretty Ap = [ppr| "ap" |]
+  pretty (Curry f) =  [ppr| "curry" + "(" > f > ")" |]
+  pretty (Const v) = [ppr| "const" + "(" > v > ")" |]
+  pretty Id =  [ppr| "id" |]
+  pretty (Comp f g) = [ppr| f + "." + g |]
+  pretty Fst = [ppr| "fst" |]
+  pretty Snd = [ppr| "snd" |]
+  pretty (Split f g) = [ppr| f + "&&&" + g |]
+  pretty Inl = [ppr| "inl" |]
+  pretty Inr = [ppr| "inr" |]
+  pretty (Case f g) = [ppr| f + "|||" + g |]
+  pretty (Vect i _) = [ppr| "vec " + show i + " (<functions>)" |]
+  pretty (Get i) = [ppr| "proj " > show i  |]
+  pretty (Fmap p f) = [ppr| p + "(" > f > ")" |]
+  pretty In = [ppr| "roll" |]
+  pretty Out = [ppr| "unroll" |]
+  pretty (Rec p f g) = [ppr| "rec" + p + "(" > f > ")" + "(" > g > ")" |]
