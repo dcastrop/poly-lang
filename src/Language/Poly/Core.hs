@@ -101,16 +101,15 @@ data Core (a :: *)
 
     -- Vector operations isomorphic to products of n elements
     -- without type-safety: split = vect, proj = get
-    Vect :: (CC a, CC b)
-         => SNat n
-         -> (TMod n -> a :-> b)
+    Vect :: (CC a, CC b, KnownNat n)
+         => (TMod n -> a :-> b)
          -> Core (a -> Vec n b)
 
     Get :: (CC a, KnownNat m)
         => TMod m
         -> Core (Vec m a -> a)
 
-    Fmap  :: (CC a, CC b, IsC CC f a, IsC CC f b)
+    Fmap  :: IsC (->) f a b
           => SPoly f
           -> a :-> b
           -> Core (f :@: a -> f :@: b)
@@ -121,7 +120,7 @@ data Core (a :: *)
     Out  :: Data f t
          => Core (t -> f :@: t)
 
-    Rec  :: (CC a, CC b, CC (f :@: a), CC (f :@: b))
+    Rec  :: IsC (->) f a b
          => SPoly f
          -> f :@: b :-> b
          -> a :-> f :@: a
@@ -155,19 +154,6 @@ pattern SndF = Fun Snd
 ap :: (a -> b, a) -> b
 ap (f, x) = f x
 
-data DictPoly f a b where
-  DictPoly :: (IsC NoConstraint f a, IsC NoConstraint f b) => DictPoly f a b
-
-noConstraintF :: forall f a b. Core (a -> b) -> SPoly f -> DictPoly f a b
-noConstraintF _ FId = DictPoly
-noConstraintF _ (FK _) = DictPoly
-noConstraintF a (FProd p q) =
-  case (noConstraintF a p, noConstraintF a q) of
-    (DictPoly, DictPoly) -> DictPoly
-noConstraintF a (FSum p q) =
-  case (noConstraintF a p, noConstraintF a q) of
-    (DictPoly, DictPoly) -> DictPoly
-
 interp :: Core t -> t
 interp Unit = ()
 interp (Val x) = x
@@ -183,22 +169,19 @@ interp (Split (repr -> f) (repr -> g)) = interp f &&& interp g
 interp Inl = Left
 interp Inr = Right
 interp (Case (repr -> f) (repr -> g)) = interp f ||| interp g
-interp (Vect i nf) = Vec.vec i interpnf
+interp (Vect nf) = Vec.vec interpnf
   where
     interpnf = interp . repr . nf
 interp (Get i) = proj i
-interp (Fmap p (repr -> f)) =
-  case noConstraintF f p of
-    DictPoly -> pmap p $ interp f
+interp (Fmap p (repr -> f)) = pmap p $ interp f
 interp In = roll
 interp Out = unroll
-interp r@(Rec p (repr -> f) (repr -> g)) = h
+interp (Rec p (repr -> f) (repr -> g)) = h
   where
     h = ef . go h . eg
     ef = interp f
     eg = interp g
-    go = case noConstraintF r p of
-            DictPoly -> pmap p
+    go = pmap p
 
 instance Value a => Const a (:->) where
   const = Fun . Const . Val
@@ -209,7 +192,6 @@ instance Category (:->) where
   f . g = Fun (f `Comp` g)
 
 instance Arrow (:->) where
-  pairDict = CDict
   arr s f = Fun $ Prim s f
   fst = Fun Fst
   snd = Fun Snd
@@ -219,7 +201,6 @@ instance Arrow (:->) where
   second f = Fun $ Split fst (f . snd)
 
 instance ArrowChoice (:->) where
-  eitherDict = CDict
   inl = Fun Inl
   inr = Fun Inr
   left f = Fun $ Case (inl . f) inr
@@ -227,21 +208,11 @@ instance ArrowChoice (:->) where
   f +++ g = Fun $ Case (inl . f) (inr . g)
   f ||| g = Fun $ Case f g
 
-data IsTyp (a :: k) where
-  IsTyp :: Typeable a => Proxy a -> IsTyp a
-
-isTyNat :: SNat n -> IsTyp n
-isTyNat n = withKnownNat n $ IsTyp Proxy
-
-instance ArrowVector (:->) where
-  vecDict = CDict
-  natDict n = case isTyNat n of
-                IsTyp Proxy -> CDict
+instance ArrowVector Vec (:->) where
   proj = Fun . Get
-  vec i f = Fun (Vect i f)
+  vec f = Fun (Vect f)
 
 instance ArrowApply (:->) where
-  arrDict = CDict
   app = Fun Ap
 
 instance Pretty (a :-> b) where
@@ -262,7 +233,7 @@ instance Pretty (Core a) where
   pretty Inl = [ppr| "inl" |]
   pretty Inr = [ppr| "inr" |]
   pretty (Case f g) = [ppr| f + "|||" + g |]
-  pretty (Vect i _) = [ppr| "vec " + show i + " (<functions>)" |]
+  pretty (Vect _) = [ppr| "vec (<functions>)" |]
   pretty (Get i) = [ppr| "proj " > show i  |]
   pretty (Fmap p f) = [ppr| p + "(" > f > ")" |]
   pretty In = [ppr| "roll" |]

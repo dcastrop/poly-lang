@@ -89,21 +89,33 @@ type family (:@:) (a :: Poly Type) (b :: Type) :: Type where
   'PProd f g :@: x = (f :@: x, g :@: x)
   'PSum f g :@: x = Either (f :@: x) (g :@: x)
 
-pmap :: forall a b f t. (ArrowChoice t, IsC (C t) f a, IsC (C t) f b)
+pmap :: forall a b f t. (ArrowChoice t, IsC t f a b)
      => SPoly f -> t a b -> t (f :@: a) (f :@: b)
 pmap FId f = f
 pmap (FK _) _ = id
 pmap (FProd p q) f = pmap p f *** pmap q f
 pmap (FSum p q) f = pmap p f +++ pmap q f
 
-type family IsC (c :: Type -> Constraint)
-                (a :: Poly Type)
+type family IsC (c :: Type -> Type -> Type)
+                (p :: Poly Type)
+                (a :: Type)
                 (b :: Type)
                 :: Constraint where
-  IsC c 'PId  x = c x
-  IsC c ('PK y)  _ = c y
-  IsC c ('PProd f g) x = (c (f :@: x), c (g :@: x), IsC c f x, IsC c g x)
-  IsC c ('PSum f g) x = (c (f :@: x), c (g :@: x), IsC c f x, IsC c g x)
+  IsC t 'PId  x y = (Category t, C t x, C t y)
+  IsC t ('PK y)  _ _= (Category t, C t y)
+  IsC t ('PProd f g) x y =
+    ( Category t, PairC t (f :@: x) (g :@: x)
+    , PairC t (f :@: x) (g :@: y)
+    , PairC t (f :@: y) (g :@: x)
+    , PairC t (f :@: y) (g :@: y)
+    , IsC t f x y, IsC t g x y)
+  IsC t ('PSum f g) x y =
+    ( Category t
+    , SumC t (f :@: x) (g :@: x)
+    , SumC t (f :@: x) (g :@: y)
+    , SumC t (f :@: y) (g :@: x)
+    , SumC t (f :@: y) (g :@: y)
+    , IsC t f x y, IsC t g x y)
 
 class Data (f :: Poly Type) t | t -> f where
   roll :: f :@: t -> t
