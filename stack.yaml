@@ -41,11 +41,11 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - git: https://github.com/dcastrop/quoted-prettyprinter
-  commit: e6e9b6363e8067d2961d4e600501d7137242c387
+  commit: HEAD
 - git: https://github.com/dcastrop/constrained-control
-  commit: 95f74006bb1cd5be2ad1b5ab516a335d22b355ad
+  commit: HEAD
 - git: https://github.com/dcastrop/IVector
-  commit: 62ea8e95d08b24d729f26b0dd921c8b03267ca2a
+  commit: HEAD
 
 # Override default flag values for local packages and extra-deps
 flags: {}
