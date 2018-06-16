@@ -40,6 +40,7 @@ import Data.Type.Mod
 import Data.Text.Prettyprint.Doc ( Pretty(..) )
 import Data.Text.Prettyprint.EDoc
 import Language.Poly.Type
+import Data.Constraint ( Dict(..) )
 
 infixr 4 :->
 
@@ -109,7 +110,7 @@ data Core (a :: *)
         => TMod m
         -> Core (Vec m a -> a)
 
-    Fmap  :: IsC (->) f a b
+    Fmap  :: IsC CC (:->) f a b
           => SPoly f
           -> a :-> b
           -> Core (f :@: a -> f :@: b)
@@ -120,11 +121,21 @@ data Core (a :: *)
     Out  :: Data f t
          => Core (t -> f :@: t)
 
-    Rec  :: IsC (->) f a b
+    Rec  :: IsC CC (:->) f a b
          => SPoly f
          -> f :@: b :-> b
          -> a :-> f :@: a
          -> Core (a -> b)
+
+polyC :: SPoly p -> proxy a -> proxy b -> Dict (IsC NoConstraint (->) p a b)
+polyC FId _ _ = Dict
+polyC (FK _) _ _ = Dict
+polyC (FProd l r) a b =
+  case (polyC l a b, polyC r a b) of
+    (Dict, Dict) -> Dict
+polyC (FSum l r) a b =
+  case (polyC l a b, polyC r a b) of
+    (Dict, Dict) -> Dict
 
 newtype (:->) a b = Fun { repr :: Core (a -> b) }
 
@@ -173,7 +184,9 @@ interp (Vect nf) = Vec.vec interpnf
   where
     interpnf = interp . repr . nf
 interp (Get i) = proj i
-interp (Fmap p (repr -> f)) = pmap p $ interp f
+interp (Fmap p (repr -> f)) =
+  case polyC p (dom f) (cod f) of
+    Dict -> pmap p $ interp f
 interp In = roll
 interp Out = unroll
 interp (Rec p (repr -> f) (repr -> g)) = h
@@ -181,17 +194,24 @@ interp (Rec p (repr -> f) (repr -> g)) = h
     h = ef . go h . eg
     ef = interp f
     eg = interp g
-    go = pmap p
+    go =
+      case polyC p (dom g) (cod f) of
+        Dict -> pmap p
 
-instance Value a => Const a (:->) where
+dom :: Core (a -> b) -> Proxy a
+dom _ = Proxy
+
+cod :: Core (a -> b) -> Proxy b
+cod _ = Proxy
+
+instance Value a => Const CC a (:->) where
   const = Fun . Const . Val
 
-instance Category (:->) where
-  type C (:->) = CC
+instance Category CC (:->) where
   id = Fun Id
   f . g = Fun (f `Comp` g)
 
-instance Arrow (:->) where
+instance Arrow CC (:->) where
   arr s f = Fun $ Prim s f
   fst = Fun Fst
   snd = Fun Snd
@@ -200,7 +220,7 @@ instance Arrow (:->) where
   first f = Fun $ Split (f . fst) snd
   second f = Fun $ Split fst (f . snd)
 
-instance ArrowChoice (:->) where
+instance ArrowChoice CC (:->) where
   inl = Fun Inl
   inr = Fun Inr
   left f = Fun $ Case (inl . f) inr
@@ -208,11 +228,11 @@ instance ArrowChoice (:->) where
   f +++ g = Fun $ Case (inl . f) (inr . g)
   f ||| g = Fun $ Case f g
 
-instance ArrowVector Vec (:->) where
+instance ArrowVector CC Vec (:->) where
   proj = Fun . Get
   vec f = Fun (Vect f)
 
-instance ArrowApply (:->) where
+instance ArrowApply CC (:->) where
   app = Fun Ap
 
 instance Pretty (a :-> b) where
