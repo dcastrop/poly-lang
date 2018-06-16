@@ -24,6 +24,7 @@ module Language.Poly.Core
   , pattern FstF
   , pattern SndF
   , interp
+  , polyC
   , (:->)(..)
   ) where
 
