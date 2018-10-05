@@ -416,24 +416,71 @@ Fixpoint pos (p : functor) : pshape p -> Set :=
   end %type.
 
 CoInductive Pap (P : functor) (X : Set) : Set :=
-| PapI : forall (s : papp P unit), (pos P s ~> X) -> Pap P X.
+| PapC : forall (s : pshape P), (pos P s ~> X) -> Pap P X.
+Arguments PapC {_ _}.
 
-Fixpoint fromPap {X : Set} P : forall (s : pshape P), (pos P s ~> X) ~> papp P X :=
+Definition pshapeOf {X} P (x : Pap P X) : pshape P :=
+  match x with
+  | PapC s _ => s
+  end.
+
+Definition posOf {X} P (x : Pap P X) : pos P (pshapeOf P x) ~> X :=
+  match x return pos P (pshapeOf P x) ~> X with
+  | PapC _ p => p
+  end.
+
+Fixpoint fromPap_ {X : Set} P : forall (s : pshape P), (pos P s ~> X) ~> papp P X :=
   match P return forall (s : pshape P), (pos P s ~> X) ~> papp P X with
   | pid => fun s f => f tt
   | pconst _ => fun s f => mret s
   | pprod P1 P2 =>
-    fun s f => fromPap P1 (fst s) (fun i => f (inl i)) >>=
-                    fun lv _ => fromPap P2 (snd s) (fun i => f (inr i)) >>=
+    fun s f => fromPap_ P1 (fst s) (fun i => f (inl i)) >>=
+                    fun lv _ => fromPap_ P2 (snd s) (fun i => f (inr i)) >>=
                                    fun rv _ => mret (lv, rv)
   | psum P1 P2 =>
     fun s => match s with
-          | inl s' => fun f => fromPap P1 s' f >>= fun rv _ => mret (inl rv)
-          | inr s' => fun f => fromPap P2 s' f >>= fun rv _ => mret (inr rv)
+          | inl s' => fun f => fromPap_ P1 s' f >>= fun rv _ => mret (inl rv)
+          | inr s' => fun f => fromPap_ P2 s' f >>= fun rv _ => mret (inr rv)
           end
   | pexp D P1 =>
-    fun s f => mret (fun d => s d >>= fun r p => fromPap P1 r (fun i => f (PExp d r p i)))
+    fun s f => mret (fun d => s d >>= fun r p => fromPap_ P1 r (fun i => f (PExp d r p i)))
   end.
+
+Definition fromPap {X : Set} P (v : Pap P X) : Delay (papp P X) :=
+  fromPap_ P (pshapeOf P v) (posOf P v).
+
+Fixpoint toPap {X : Set} P : papp P X -> Pap P X :=
+  match P return papp P X -> Pap P X with
+  | pid          => fun x => @PapC pid        X tt (fun _ => mret x)
+  | pconst A     => fun x => @PapC (pconst A) X x  (fun e => match e with end)
+  | pprod  P1 P2 =>
+    fun x => match x with
+          | (l, r) => match toPap P1 l, toPap P2 r with
+                     | PapC xl fl, PapC xr fr =>
+                       @PapC (pprod P1 P2) X
+                             (xl, xr)
+                             (fun e => match e with
+                                    | inl e' => fl e'
+                                    | inr e' => fr e'
+                                    end)
+                     end
+          end
+  | psum   P1 P2 =>
+    fun x => match x with
+          | inl y => match toPap P1 y with
+                    | PapC xy fy => @PapC (psum P1 P2) X (inl xy) fy
+                    end
+          | inr y => match toPap P2 y with
+                    | PapC xy fy => @PapC (psum P1 P2) X (inr xy) fy
+                    end
+          end
+  | pexp   D  P1 =>
+    fun x => @PapC (pexp D P1) X
+                (fun d => x d >>= fun v _ => mret (pshapeOf P1 (toPap P1 v)))
+                (fun p => x (valueOfPos p) >>= fun v pr => posOf P1 (toPap P1 v) _)
+  end.
+
+
 
 Fixpoint appToPapp {X : Set} (P : functor) : app P X -> papp P X :=
   match P return app P X -> papp P X with
