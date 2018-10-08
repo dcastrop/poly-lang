@@ -358,8 +358,6 @@ Section ExamplesRec.
   CoFixpoint build0 (n : nat) : CoList nat :=
     cin (listP nat) (inr (n, build0 (S n))).
 
-  Eval compute in take 20 (listP nat) (build0 0).
-
   Definition ntreeP (A : Set) : functor := \PK{unit} \PS \PK{ A } \PP \PI \PP \PI.
   Definition ltreeP (A : Set) : functor := \PK{A} \PS \PI \PP \PI.
   Definition CoTree A := Nu (ntreeP A).
@@ -368,15 +366,19 @@ Section ExamplesRec.
   CoFixpoint build1 (n : nat) : CoTree nat :=
     cin (ntreeP nat) (inr (n, build1 (n+1), build1 (n * 2 + 1))).
 
-  Eval compute in take 6 (ntreeP nat) (build1 0).
-
   Close Scope functor_scope.
 End ExamplesRec.
 
 Definition pmap {X Y : Set} P (f : X -> Y) (v : App P X) : App P Y :=
   match v with
-  | AppI s g => AppI s (fun s => f (g s))
+  | AppC s g => AppC s (fun s => g s >>= fun v _ => mret (f v))
   end.
+
+
+(* Guardedness???? How do I use Delay monad for general rec!?!?*)
+CoFixpoint recursiveTest (n : nat) (t : nat -> bool) : Delay nat :=
+  if (t n) then Now 1
+  else recursiveTest (n - 2) t >>= fun v _ => mret (v * 2).
 
 CoFixpoint hylo {B : Set} (P : functor)
            (f : app P B ~> B) (x : Nu P) : Delay B :=
