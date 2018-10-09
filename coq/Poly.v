@@ -1,37 +1,13 @@
 (** Delay monad ****************************************************************)
 
-CoInductive CoNat : Set :=
-| CO : CoNat
-| CS : CoNat -> CoNat.
-
-Definition peekN (x : CoNat) : CoNat :=
-  match x with
-  | CO => CO
-  | CS m => CS m
-  end.
-
-Theorem peekNThm : forall (x : CoNat), x = peekN x.
-Proof.
-  destruct x; reflexivity.
-Qed.
-
 CoInductive Delay (t : Type) : Type :=
 | Now  : t -> Delay t
 | Wait : Delay t -> Delay t.
 Arguments Now {t} v.
 Arguments Wait {t} d.
 
-CoFixpoint steps {A} (x : Delay A) : CoNat :=
-  match x with
-  | Now _ => CO
-  | Wait w => CS (steps w)
-  end.
-
-CoFixpoint roll {A} (x : A) (n : CoNat) : Delay A :=
-  match n with
-  | CO => Now x
-  | CS m => Wait (roll x m)
-  end.
+CoFixpoint bot {X} : Delay X :=
+  Wait bot.
 
 Definition peek {A} (x : Delay A) : Delay A :=
   match x with
@@ -58,31 +34,6 @@ Arguments eWait {_ _ _}.
 Definition approxEq A (d1 d2: Delay A) : Prop :=
   forall (v : A), eval A d1 v <-> eval A d2 v.
 
-(*
-Theorem simApprox : forall A (d1 d2 : Delay A), sim A d1 d2 -> approxEq A d1 d2.
-Proof.
-  intros A d1 d2 H v.
-  split; revert d1 d2 H v; cofix; intros d1 d2 H v E.
-  - inversion H; subst; inversion E; subst; constructor.
-    apply (simApprox w1 w2 H0); assumption.
-  - inversion H; subst; inversion E; subst; constructor.
-    apply (simApprox w1 w2 H0); assumption.
-Qed.
-
-CoFixpoint bot {A} : Delay A := Wait bot.
-
-(* The below is definitely not true! What is true is
-   forall v, eval bot v*)
-Lemma approxBot : forall A (d1 : Delay A), approxEq A d1 bot.
-Proof.
-  intros A d1 v; split.
-  - intros _; cofix CH; rewrite (peekThm _ bot);
-      unfold bot; simpl; fold (@bot A);
-        constructor; assumption.
-  - revert d1; cofix CH;intros [v1 | w1] H.
-Abort.
-*)
-
 CoFixpoint bind {A B} (x : Delay A) : (forall (v : A), eval A x v -> Delay B) -> Delay B :=
   match x return (forall (v : A), eval A x v -> Delay B) -> Delay B with
   | Now v => fun f => f v (eNow v)
@@ -90,34 +41,26 @@ CoFixpoint bind {A B} (x : Delay A) : (forall (v : A), eval A x v -> Delay B) ->
   end.
 Arguments bind {_ _}.
 
+CoFixpoint join {A} (x : Delay (Delay A)) : Delay A :=
+  match x with
+  | Now v => v
+  | Wait w => Wait (join w)
+  end.
+
 Notation "m >>= f" := (bind m f) (at level 42, left associativity).
 Notation "m1 >> m2" := (bind m1 (fun _ => m2)) (at level 42, left associativity).
 Definition mret t (x : t) := Now x.
 Arguments mret {t} x.
-
-(*
-Lemma bindWait : forall A B (x : A) (y : B) (m : Delay A) (f : forall (x : A), eval A m x -> Delay B)
-                   (pr0 : eval A m x) (pr1 : eval B (Wait m >>= f) y),
-    eval B (m >>= fun v pr => f v (eWait m x pr)).
-*)
-
-(*
-CoFixpoint appWait (w : Delay A) (x : A) (e : eval A w x) (c : T )
-*)
-
-CoFixpoint delay A (n : CoNat) (x : Delay A) : Delay A :=
-  match n with
-  | CO => x
-  | CS m => Wait (delay A m x)
-  end.
 
 Definition fwait {A B} (w : Delay A)
            (f : forall (y : A), eval A (Wait w) y -> Delay B)
            (y : A) (w : eval A w y) : Delay B :=
   f y (eWait w).
 
-Lemma evalBind : forall A B (x : A) (y : B) (m : Delay A) (f : forall (x : A), eval A m x -> Delay B)
-                   (pr0 : eval A m x) (pr1 : eval B (m >>= f) y),
+Lemma evalBind :
+  forall A B (x : A) (y : B)
+    (m : Delay A) (f : forall (x : A), eval A m x -> Delay B)
+    (pr0 : eval A m x) (pr1 : eval B (m >>= f) y),
     eval B (f x pr0) y.
 Proof.
   fix IH 7.
@@ -147,14 +90,20 @@ Inductive functor : Type :=
 | psum   : functor -> functor -> functor
 | pexp   : Set -> functor -> functor.
 
-Fixpoint poly (f : functor) : Prop :=
-  match f with
-  | pid => True
-  | pconst _ => True
-  | pprod p1 p2 => poly p1 /\ poly p2
-  | psum  p1 p2 => poly p1 /\ poly p2
-  | pexp  _  _  => False
+Fixpoint comp (P1 : functor) (P2 : functor) : functor :=
+  match P1 with
+  | pid => P2
+  | pconst Y => pconst Y
+  | pprod P11 P12 => pprod (comp P11 P2) (comp P12 P2)
+  | psum P11 P12 => psum (comp P11 P2) (comp P12 P2)
+  | pexp D P1 => pexp D (comp P1 P2)
   end.
+Fixpoint Exp P (n : nat) : functor :=
+  match n with
+  | O => pid
+  | S m => comp P (Exp P m)
+  end.
+Notation " P ^ n " := (Exp P n) (at level 30, right associativity).
 
 Notation " \PI " := (pid) (at level 0) : functor_scope.
 Notation " \PK{ X }" := (pconst X) (at level 0) : functor_scope.
@@ -172,19 +121,34 @@ Fixpoint app (P : functor) (A : Set) : Set :=
   | pexp D P1 => D ~> app P1 A
   end.
 
-Fixpoint fmap {A B : Set} (P : functor) (f : A ~> B) : app P A ~> app P B :=
-  match P return app P A ~> app P B with
+Fixpoint map {A B : Set} (P : functor) (f : A -> B) : app P A -> app P B :=
+  match P return app P A -> app P B with
   | pid => fun x => f x
+  | pconst _ => fun y => y
+  | pprod P1 P2 => fun x => (map P1 f (fst x), map P2 f (snd x))
+  | psum P1 P2 => fun x => match x with
+                       | inl y => inl (map P1 f y)
+                       | inr y => inr (map P2 f y)
+                   end
+  | pexp D P => fun g r => g r >>= fun v _ => mret (map P f v)
+  end.
+
+Fixpoint waitF {A : Set} (F : functor) : app F (Delay A) ~> app F A :=
+  match F return app F (Delay A) -> Delay (app F A) with
+  | pid => fun x => x
   | pconst _ => fun y => mret y
-  | pprod P1 P2 => fun x => fmap P1 f (fst x) >>=
-                              fun l _ => fmap P2 f (snd x) >>=
+  | pprod P1 P2 => fun x => waitF P1 (fst x) >>=
+                              fun l _ => waitF P2 (snd x) >>=
                                             fun r _ => mret (l, r)
   | psum P1 P2 => fun x => match x with
-                       | inl y => fmap P1 f y >>= fun z _ => mret (inl z)
-                       | inr y => fmap P2 f y >>= fun z _ => mret (inr z)
-                   end
-  | pexp D P => fun g => mret (fun r => g r >>= fun v _ => fmap P f v)
+                       | inl y => waitF P1 y >>= fun v _ => mret (inl v)
+                       | inr y => waitF P2 y >>= fun v _ => mret (inr v)
+                       end
+  | pexp D P => fun g => mret (fun r => g r >>= fun v _ => waitF P v)
   end.
+
+Definition fmap {A B : Set} (P : functor) (f : A ~> B) : app P A ~> app P B :=
+  fun x => waitF P (map P f x).
 
 Definition pshape (P : functor) : Set := app P unit.
 
@@ -215,21 +179,29 @@ Definition nextPos {D p f pos} (x : posExp D p f pos) : pos (shapeOfPos x) :=
   | PExp _ _ _ s => s
   end.
 
+Definition shape {X} (P : functor) (x : app P X) : pshape P :=
+  map P (fun _ => tt) x.
+
 Fixpoint pos (p : functor) : pshape p -> Set :=
   match p return app p unit -> Set with
   | pid          => fun _ => unit
   | pconst x     => fun _ => Empty_set
-  | pprod  p1 p2 => fun s => pos p1 (fst s) + pos p2 (snd s)
-  | psum   p1 p2 => fun s => match s with
-                         | inl s' => pos p1 s'
-                         | inr s' => pos p2 s'
+  | pprod  P1 P2 => fun s => pos P1 (fst s) + pos P2 (snd s)
+  | psum   P1 P2 => fun s => match s with
+                         | inl s' => pos P1 s'
+                         | inr s' => pos P2 s'
                          end
-  | pexp  D p1   => fun s => posExp D p1 s (pos p1)
+  | pexp  D P1   => fun s => posExp D P1 s (pos P1)
   end %type.
 
 CoInductive App (P : functor) (X : Set) : Set :=
 | AppC : forall (s : pshape P), (pos P s ~> X) -> App P X.
 Arguments AppC {_ _}.
+
+Definition pmap {X Y : Set} P (f : X -> Y) (v : App P X) : App P Y :=
+  match v with
+  | AppC s g => AppC s (fun s => g s >>= fun v _ => mret (f v))
+  end.
 
 Definition pshapeOf {X} P (x : App P X) : pshape P :=
   match x with
@@ -239,6 +211,12 @@ Definition pshapeOf {X} P (x : App P X) : pshape P :=
 Definition posOf {X} P (x : App P X) : pos P (pshapeOf P x) ~> X :=
   match x return pos P (pshapeOf P x) ~> X with
   | AppC _ p => p
+  end.
+
+Definition castShape {P1} {v0 v1 : pshape P1} (eq : v0 = v1)
+  : pos P1 v0 -> pos P1 v1 :=
+  match eq in (_ = v1) return pos P1 v0 -> pos P1 v1 with
+  | eq_refl => fun x => x
   end.
 
 Fixpoint fromApp_ {X : Set} P : forall (s : pshape P), (pos P s ~> X) ~> app P X :=
@@ -261,28 +239,22 @@ Fixpoint fromApp_ {X : Set} P : forall (s : pshape P), (pos P s ~> X) ~> app P X
 Definition fromApp {X : Set} P (v : App P X) : Delay (app P X) :=
   fromApp_ P (pshapeOf P v) (posOf P v).
 
-Definition castShape {P1} {v0 v1 : pshape P1} (eq : v0 = v1)
-  : pos P1 v0 -> pos P1 v1 :=
-  match eq in (_ = v1) return pos P1 v0 -> pos P1 v1 with
-  | eq_refl => fun x => x
-  end.
-
-
 Fixpoint toApp {X : Set} P : app P X -> App P X :=
   match P return app P X -> App P X with
   | pid          => fun x => @AppC pid        X tt (fun _ => mret x)
   | pconst A     => fun x => @AppC (pconst A) X x  (fun e => match e with end)
   | pprod  P1 P2 =>
     fun x => match x with
-          | (l, r) => match toApp P1 l, toApp P2 r with
-                     | AppC xl fl, AppC xr fr =>
-                       @AppC (pprod P1 P2) X
-                             (xl, xr)
-                             (fun e => match e with
-                                    | inl e' => fl e'
-                                    | inr e' => fr e'
-                                    end)
-                     end
+          | (l, r) =>
+            match toApp P1 l, toApp P2 r with
+            | AppC xl fl, AppC xr fr =>
+              @AppC (pprod P1 P2) X
+                    (xl, xr)
+                    (fun e => match e with
+                           | inl e' => fl e'
+                           | inr e' => fr e'
+                           end)
+            end
           end
   | psum   P1 P2 =>
     fun x => match x with
@@ -305,46 +277,95 @@ Fixpoint toApp {X : Set} P : app P X -> App P X :=
                                         (nextPos p)))
   end.
 
-
 Inductive Mu (P : functor) : Set :=
-| MuI : App P (Mu P) -> Mu P.
+| MuI : App P (Delay (Mu P)) -> Mu P.
 Arguments MuI {_}.
 
-CoInductive Nu (P : functor) : Set :=
-| NuI : App P (Nu P) -> Nu P.
-Arguments NuI {_}.
+Definition MuO P (x : Mu P) : App P (Delay (Mu P)) :=
+  match x with
+  | MuI y => y
+  end.
 
-Definition iin  {P} (x : app P (Mu P)) : Mu P := MuI (toApp P x).
-Definition iout {P} (x : Mu P) : Delay (app P (Mu P)) :=
+Definition iin  P (x : app P (Delay (Mu P))) : Mu P := MuI (toApp P x).
+Definition iout P (x : Mu P) : Delay (app P (Delay (Mu P))) :=
   match x with
   | MuI z => fromApp P z
   end.
 
-Definition cin  P (x : app P (Nu P)) : Nu P := NuI (toApp P x).
-Definition cout P (x : Nu P) : Delay (app P (Nu P)) :=
+CoInductive Nu (P : functor) : Set :=
+| NuI : App P (Delay (Nu P)) -> Nu P.
+Arguments NuI {_}.
+
+Definition NuO P (x : Mu P) : App P (Delay (Mu P)) :=
+  match x with
+  | MuI y => y
+  end.
+
+Definition cin  P (x : app P (Delay (Nu P))) : Nu P := NuI (toApp P x).
+Definition cout P (x : Nu P) : Delay (app P (Delay (Nu P))) :=
   match x with
   | NuI z => fromApp P z
   end.
 
-Fixpoint approx (n : nat) P X : Set :=
-  match n with
-  | O => X
-  | S m => app P (approx m P X)
+Lemma app_comp : forall P1 P2 X, app (comp P1 P2) X = app P1 (app P2 X).
+Proof.
+  induction P1; intros P2 X; simpl;
+    try rewrite IHP1_1, IHP1_2; try rewrite IHP1; auto.
+Defined.
+
+Lemma exp_S : forall X P n, app P (app (P ^ n) X) = app (P ^ (S n)) X.
+Proof.
+  intros X P n; revert X; induction P; intros X; simpl;
+    repeat rewrite app_comp; auto.
+Defined.
+
+Definition castDelay {A B : Set} (pr : A = B) (x : Delay A) : Delay B :=
+  match pr in _ = B return Delay A -> Delay B with
+  | eq_refl => fun x => x
+  end x.
+
+
+Fixpoint unroll (n : nat) P (x : Nu P) : Delay (app (P^n) (Delay (Nu P))) :=
+  match n return Delay (app (P^n) (Delay (Nu P))) with
+  | O => mret (mret x)
+  | S m => cout P x >>= fun v _ => castDelay
+                                 (exp_S (Delay (Nu P)) P m)
+                                 (fmap P (fun v => v >>= fun r _ => unroll m P r) v)
   end.
 
-Notation " P ^ n " := (approx n P) (at level 30, right associativity).
+Definition take (n : nat) P (x : Nu P) : Delay (app (P^n) unit) :=
+  join (unroll n P x >>= fun v _ => mret (fmap (P^n) (fun _ => mret tt) v)).
 
-Fixpoint unroll (n : nat) P (x : Nu P) : Delay ((P^n) (Nu P)) :=
-  match n return Delay ((P^n) (Nu P)) with
-  | O => mret x
-  | S m => cout P x >>= fun v _ => fmap P (unroll m P) v
+Fixpoint tryUnwrap {A} (fuel : nat) (d : Delay A) : option A :=
+  match fuel with
+  | O => None
+  | S m => match d with
+          | Now v => Some v
+          | Wait w => tryUnwrap m w
+          end
   end.
 
-Fixpoint take (n : nat) P (x : Nu P) : Delay ((P^n) unit) :=
-  match n return Delay ((P^n) unit) with
-  | O => mret tt
-  | S m => cout P x >>= fun v _ => fmap P (take m P) v
+Definition large := 1.
+
+Fixpoint tryTake (n : nat) P (x : Nu P) : option (app (P^n) unit) :=
+  tryUnwrap large (take n P x).
+
+Fail CoFixpoint coindToInd P (x : Nu P) : Delay (Mu P) :=
+  cout P x >>= fun px _ => fmap P (fun dx => dx >>= fun x _ => coindToInd P x) px >>= fun r _ => mret (iin P r).
+
+Fixpoint unrollI (n : nat) P (x : Mu P) : Delay (app (P^n) (Delay (Mu P))) :=
+  match n return Delay (app (P^n) (Delay (Mu P))) with
+  | O => mret (Now x)
+  | S m => castDelay
+            (exp_S _ P m)
+            (iout P x >>= fun v _ => fmap P (fun th => th >>= fun r _ => unrollI m P r) v)
   end.
+
+Definition takeI (n : nat) P (x : Mu P) : Delay (app (P^n) unit) :=
+  join (unrollI n P x >>= fun v _ => mret (fmap (P^n) (fun _ => mret tt) v)).
+
+Fixpoint tryTakeI (n : nat) P (x : Mu P) : option (app (P^n) unit) :=
+  tryUnwrap large (takeI n P x).
 
 Section ExamplesRec.
   Open Scope functor_scope.
@@ -356,7 +377,16 @@ Section ExamplesRec.
   Definition List A := Mu (listP A).
 
   CoFixpoint build0 (n : nat) : CoList nat :=
-    cin (listP nat) (inr (n, build0 (S n))).
+    cin (listP nat) (inr (n, Now (build0 (S n)))).
+
+  Fixpoint buildI0 (n : nat) (m : nat) : List nat :=
+    match n with
+    | O => iin (listP nat) (inl tt)
+    | S n' => iin (listP nat) (inr (m, Now (buildI0 n' (S m))))
+    end.
+
+  Eval compute in tryTake 20 (listP nat) (build0 3).
+  Eval compute in tryTakeI 20 (listP nat) (buildI0 10 3).
 
   Definition ntreeP (A : Set) : functor := \PK{unit} \PS \PK{ A } \PP \PI \PP \PI.
   Definition ltreeP (A : Set) : functor := \PK{A} \PS \PI \PP \PI.
@@ -364,40 +394,44 @@ Section ExamplesRec.
   Definition Tree A := Mu (ntreeP A).
 
   CoFixpoint build1 (n : nat) : CoTree nat :=
-    cin (ntreeP nat) (inr (n, build1 (n+1), build1 (n * 2 + 1))).
+    cin (ntreeP nat) (inr (n, Now (build1 (n+1)), Now (build1 (n * 2)))).
+
+  Eval compute in tryTake 8 (ntreeP nat) (build1 0).
 
   Close Scope functor_scope.
 End ExamplesRec.
 
-Definition pmap {X Y : Set} P (f : X -> Y) (v : App P X) : App P Y :=
-  match v with
-  | AppC s g => AppC s (fun s => g s >>= fun v _ => mret (f v))
-  end.
-
-
-(* Guardedness???? How do I use Delay monad for general rec!?!?*)
-CoFixpoint recursiveTest (n : nat) (t : nat -> bool) : Delay nat :=
+(* Guardedness???? How do I use Delay monad for general rec!?!?
+   Work in Agda uses sized types.*)
+Fail CoFixpoint recursiveTest (n : nat) (t : nat -> bool) : Delay nat :=
   if (t n) then Now 1
   else recursiveTest (n - 2) t >>= fun v _ => mret (v * 2).
+
+Definition recursiveTest (n : nat) (t : nat -> bool) : Delay nat :=
+  (cofix rec n (t : nat -> bool) k :=
+     if (t n) then Now (k 1)
+     else Wait (rec (n - 2) t (fun n => k n))
+  ) n t (fun v => v * 2).
 
 CoFixpoint hylo {B : Set} (P : functor)
            (f : app P B ~> B) (x : Nu P) : Delay B :=
   let h : Nu P ~> B := hylo P f in
-   (fix mapr P0 : app P0 (Nu P) ~> app P0 B
+  cout P x >>= fun x _ =>
+   (fix mapr P0 : app P0 (Delay (Nu P)) ~> app P0 B
            := match P0 return app P0 (Nu P) ~> app P0 _ with
               | pid => fun x => Wait (h x)
               | pconst _ => fun x => Now x
               | pprod P1 P2 => fun x => mapr P1 (fst x) >>=
-                                         fun l => mapr P2 (snd x) >>=
-                                                    fun r => mret (l, r)
+                                         fun l _ => mapr P2 (snd x) >>=
+                                                    fun r _ => mret (l, r)
               | psum P1 P2 => fun x => match x with
                                    | inl y => mapr P1 y >>=
-                                                  fun r => mret (inl r)
+                                                  fun r _ => mret (inl r)
                                    | inr y => mapr P2 y >>=
-                                                  fun r => mret (inr r)
+                                                  fun r _ => mret (inr r)
                                    end
-              | pexp D P => fun x => mret (fun r => x r >>= fun v => mapr P v)
-              end) P (appToAppp P (cout P x))
+              | pexp D P => fun x => mret (fun r => x r >>= fun v _ => mapr P v)
+              end) P x
                      >>= fun r => Wait (f r).
 
 (* Interleave map and corecursion for building Hylo, instead of fmap? *)
