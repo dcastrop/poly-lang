@@ -278,31 +278,31 @@ Fixpoint toApp {X : Set} P : app P X -> App P X :=
   end.
 
 Inductive Mu (P : functor) : Set :=
-| MuI : App P (Delay (Mu P)) -> Mu P.
+| MuI : App P (Mu P) -> Mu P.
 Arguments MuI {_}.
 
-Definition MuO P (x : Mu P) : App P (Delay (Mu P)) :=
+Definition MuO P (x : Mu P) : App P (Mu P) :=
   match x with
   | MuI y => y
   end.
 
-Definition iin  P (x : app P (Delay (Mu P))) : Mu P := MuI (toApp P x).
-Definition iout P (x : Mu P) : Delay (app P (Delay (Mu P))) :=
+Definition iin  P (x : app P (Mu P)) : Mu P := MuI (toApp P x).
+Definition iout P (x : Mu P) : Delay (app P (Mu P)) :=
   match x with
   | MuI z => fromApp P z
   end.
 
 CoInductive Nu (P : functor) : Set :=
-| NuI : App P (Delay (Nu P)) -> Nu P.
+| NuI : App P (Nu P) -> Nu P.
 Arguments NuI {_}.
 
-Definition NuO P (x : Mu P) : App P (Delay (Mu P)) :=
+Definition NuO P (x : Mu P) : App P (Mu P) :=
   match x with
   | MuI y => y
   end.
 
-Definition cin  P (x : app P (Delay (Nu P))) : Nu P := NuI (toApp P x).
-Definition cout P (x : Nu P) : Delay (app P (Delay (Nu P))) :=
+Definition cin  P (x : app P (Nu P)) : Nu P := NuI (toApp P x).
+Definition cout P (x : Nu P) : Delay (app P (Nu P)) :=
   match x with
   | NuI z => fromApp P z
   end.
@@ -325,12 +325,12 @@ Definition castDelay {A B : Set} (pr : A = B) (x : Delay A) : Delay B :=
   end x.
 
 
-Fixpoint unroll (n : nat) P (x : Nu P) : Delay (app (P^n) (Delay (Nu P))) :=
-  match n return Delay (app (P^n) (Delay (Nu P))) with
-  | O => mret (mret x)
+Fixpoint unroll (n : nat) P (x : Nu P) : Delay (app (P^n) (Nu P)) :=
+  match n return Delay (app (P^n) (Nu P)) with
+  | O => mret x
   | S m => cout P x >>= fun v _ => castDelay
-                                 (exp_S (Delay (Nu P)) P m)
-                                 (fmap P (fun v => v >>= fun r _ => unroll m P r) v)
+                                 (exp_S (Nu P) P m)
+                                 (fmap P (unroll m P) v)
   end.
 
 Definition take (n : nat) P (x : Nu P) : Delay (app (P^n) unit) :=
@@ -353,12 +353,12 @@ Fixpoint tryTake (n : nat) P (x : Nu P) : option (app (P^n) unit) :=
 Fail CoFixpoint coindToInd P (x : Nu P) : Delay (Mu P) :=
   cout P x >>= fun px _ => fmap P (fun dx => dx >>= fun x _ => coindToInd P x) px >>= fun r _ => mret (iin P r).
 
-Fixpoint unrollI (n : nat) P (x : Mu P) : Delay (app (P^n) (Delay (Mu P))) :=
-  match n return Delay (app (P^n) (Delay (Mu P))) with
-  | O => mret (Now x)
+Fixpoint unrollI (n : nat) P (x : Mu P) : Delay (app (P^n) (Mu P)) :=
+  match n return Delay (app (P^n) (Mu P)) with
+  | O => Now x
   | S m => castDelay
             (exp_S _ P m)
-            (iout P x >>= fun v _ => fmap P (fun th => th >>= fun r _ => unrollI m P r) v)
+            (iout P x >>= fun v _ => fmap P (unrollI m P) v)
   end.
 
 Definition takeI (n : nat) P (x : Mu P) : Delay (app (P^n) unit) :=
@@ -377,12 +377,12 @@ Section ExamplesRec.
   Definition List A := Mu (listP A).
 
   CoFixpoint build0 (n : nat) : CoList nat :=
-    cin (listP nat) (inr (n, Now (build0 (S n)))).
+    cin (listP nat) (inr (n, build0 (S n))).
 
   Fixpoint buildI0 (n : nat) (m : nat) : List nat :=
     match n with
     | O => iin (listP nat) (inl tt)
-    | S n' => iin (listP nat) (inr (m, Now (buildI0 n' (S m))))
+    | S n' => iin (listP nat) (inr (m, buildI0 n' (S m)))
     end.
 
   Eval compute in tryTake 20 (listP nat) (build0 3).
@@ -394,48 +394,12 @@ Section ExamplesRec.
   Definition Tree A := Mu (ntreeP A).
 
   CoFixpoint build1 (n : nat) : CoTree nat :=
-    cin (ntreeP nat) (inr (n, Now (build1 (n+1)), Now (build1 (n * 2)))).
+    cin (ntreeP nat) (inr (n, build1 (n+1), build1 (n * 2))).
 
   Eval compute in tryTake 8 (ntreeP nat) (build1 0).
 
   Close Scope functor_scope.
 End ExamplesRec.
-
-(* Guardedness???? How do I use Delay monad for general rec!?!?
-   Work in Agda uses sized types.*)
-Fail CoFixpoint recursiveTest (n : nat) (t : nat -> bool) : Delay nat :=
-  if (t n) then Now 1
-  else recursiveTest (n - 2) t >>= fun v _ => mret (v * 2).
-
-Definition recursiveTest (n : nat) (t : nat -> bool) : Delay nat :=
-  (cofix rec n (t : nat -> bool) k :=
-     if (t n) then Now (k 1)
-     else Wait (rec (n - 2) t (fun n => k n))
-  ) n t (fun v => v * 2).
-
-CoFixpoint hylo {B : Set} (P : functor)
-           (f : app P B ~> B) (x : Nu P) : Delay B :=
-  let h : Nu P ~> B := hylo P f in
-  cout P x >>= fun x _ =>
-   (fix mapr P0 : app P0 (Delay (Nu P)) ~> app P0 B
-           := match P0 return app P0 (Nu P) ~> app P0 _ with
-              | pid => fun x => Wait (h x)
-              | pconst _ => fun x => Now x
-              | pprod P1 P2 => fun x => mapr P1 (fst x) >>=
-                                         fun l _ => mapr P2 (snd x) >>=
-                                                    fun r _ => mret (l, r)
-              | psum P1 P2 => fun x => match x with
-                                   | inl y => mapr P1 y >>=
-                                                  fun r _ => mret (inl r)
-                                   | inr y => mapr P2 y >>=
-                                                  fun r _ => mret (inr r)
-                                   end
-              | pexp D P => fun x => mret (fun r => x r >>= fun v _ => mapr P v)
-              end) P x
-                     >>= fun r => Wait (f r).
-
-(* Interleave map and corecursion for building Hylo, instead of fmap? *)
-
 
 (*******************************************************************************)
 (** SYNTAX & DEFNS *************************************************************)
@@ -450,6 +414,7 @@ Inductive type : Set :=
 | tyFun  : type -> type -> type
 | tyProd : type -> type -> type
 | tySum  : type -> type -> type
+| tyApp  : pfun -> type -> type
 | tyFix  : pfun -> type
 with pfun : Set :=
 | fnId   : pfun
@@ -462,15 +427,13 @@ Scheme type_ind_m := Induction for type Sort Prop
 
 Parameter PHasType : aTerm -> type -> Prop.
 
-Fixpoint apply (p : pfun) (t : type) {struct p} : type :=
+Fixpoint papp (p : pfun) (t : type) {struct p} : type :=
   match p with
   | fnId         => t
   | fnCnst t'    => t'
-  | fnSum  p1 p2 => tySum  (apply p1 t) (apply p2 t)
-  | fnProd p1 p2 => tyProd (apply p1 t) (apply p2 t)
+  | fnSum  p1 p2 => tySum  (papp p1 t) (papp p2 t)
+  | fnProd p1 p2 => tyProd (papp p1 t) (papp p2 t)
   end.
-
-Notation ":[ p ] t" := (apply p t) (at level 0).
 
 Inductive term : Set :=
 | tmPrim  : aTerm -> term
@@ -488,6 +451,8 @@ Inductive term : Set :=
 | tmInl   : term
 | tmInr   : term
 | tmCase  : term -> term -> term
+(* Functors *)
+| tmMap   : pfun -> term -> term
 (* Recursion *)
 | tmIn    : pfun -> term
 | tmOut   : pfun -> term
@@ -520,40 +485,100 @@ Inductive HasType : term -> type -> Prop :=
     HasType e2 (tyFun b c) ->
     HasType (tmCase e1 e2) (tyFun (tySum a b) c)
 
-| TyIn    : forall p, HasType (tmIn p) (tyFun (:[p] (tyFix p)) (tyFix p))
-| TyOut   : forall p, HasType (tmIn p) (tyFun (tyFix p) (:[p] (tyFix p)))
+| TyMap   : forall p e a b,
+    HasType e (tyFun a b) ->
+    HasType (tmMap p e) (tyFun (tyApp p a) (tyApp p b))
+
+| TyIn    : forall p, HasType (tmIn p) (tyFun (tyApp p (tyFix p)) (tyFix p))
+| TyOut   : forall p, HasType (tmIn p) (tyFun (tyFix p) (tyApp p (tyFix p)))
 | TyRec   : forall p e1 e2 a b,
-    HasType e1 (tyFun (:[p] b) b) ->
-    HasType e2 (tyFun a (:[p] a)) ->
+    HasType e1 (tyFun (papp p b) b) ->
+    HasType e2 (tyFun a (papp p a)) ->
     HasType (tmRec p e1 e2) (tyFun a b).
 
-(** Interpretation of types **)
-
 Parameter interp_aType : aType -> Set.
-
 Fixpoint interp_type  (t : type) : Set :=
   match t with
   | tyUnit => unit
   | tyPrim k => interp_aType k
-  | tyFun a b => interp_type a -> interp_type b
+  | tyFun a b => interp_type a ~> interp_type b
   | tyProd a b => interp_type a * interp_type b
   | tySum a b => interp_type a + interp_type b
-  | tyFix p => Rec (interp_pfun p)
+  | tyApp p a => app (interp_pfun p) (interp_type a)
+  | tyFix p => Nu (interp_pfun p)
   end
 with
-interp_pfun (p : pfun) : Set -> Set :=
+interp_pfun (p : pfun) : functor :=
   match p with
-  | fnId => fun x => x
-  | fnCnst a => fun _ => interp_type a
-  | fnProd p q => fun x => (interp_pfun p x * interp_pfun q x)%type
-  | fnSum p q => fun x => (interp_pfun p x + interp_pfun q x)%type
+  | fnId => pid
+  | fnCnst a => pconst (interp_type a)
+  | fnProd p q => pprod (interp_pfun p) (interp_pfun q)
+  | fnSum p q => psum (interp_pfun p) (interp_pfun q)
   end.
 
-(** Interpretation of terms **)
+(*
+Parameter interp_aTerm : forall (e : aTerm) (t : type), HasType (tmPrim e) t -> interp_type t -> Prop.
+*)
+Parameter interp_aTerm : forall (e : aTerm) (A : Set), A -> Prop.
 
-Parameter interp_aTerm : forall (e : aTerm) (t : type), HasType (tmPrim e) t -> interp_type t.
+CoInductive interp_term : forall {A : Set}, term -> A -> Prop :=
+| IPrim : forall A p x, interp_aTerm p A x -> interp_term (tmPrim p) x
+| IUnit : interp_term tmUnit tt
+| IConst : forall (A B : Set) t (x : B),
+    interp_term t x ->
+    interp_term (tmConst t) (fun (_ : A) => x)
+
+| IId : forall (A : Set), interp_term tmId (fun (x : A) => x)
+| IComp : forall {A B C : Set} (e1 : term) (f1 : B -> C) (e2 : term) (f2 : A -> B),
+    interp_term e1 f1 ->
+    interp_term e2 f2 ->
+    interp_term (tmComp e1 e2) (fun x => f1 (f2 x))
+
+| IFst : forall (A B : Set), interp_term tmFst (fun (x : A * B) => fst x)
+| ISnd : forall (A B : Set), interp_term tmSnd (fun (x : A * B) => snd x)
+| ISplit : forall (A B C : Set) e1 e2 (f1 : A -> B) (f2 : A -> C),
+    interp_term e1 f1 ->
+    interp_term e2 f2 ->
+    interp_term (tmSplit e1 e2) (fun x => (f1 x, f2 x))
+
+| IInl : forall (A B : Set), interp_term tmInl (fun (x : A) => inl B x)
+| IInr : forall (A B : Set), interp_term tmInr (fun (x : B) => inr A x)
+| ICase : forall (A B C : Set) e1 e2 (f1 : A -> C) (f2 : B -> C),
+    interp_term e1 f1 ->
+    interp_term e2 f2 ->
+    interp_term (tmCase  e1 e2) (fun x => match x with
+                                       | inl y => f1 y
+                                       | inr y => f2 y
+                                 end)
+
+| IMap : forall (A B : Set) (e : term) (f : A -> B) P,
+    interp_term e f ->
+    interp_term (tmMap P e) (map (interp_pfun P) f)
+
+| IIn  : forall P, interp_term (tmIn  P) (fun x => cin (interp_pfun P) x)
+| IOut: forall P, interp_term (tmOut P) (fun x => cout (interp_pfun P) x)
+| IRec: forall (A B : Set) P
+          e1 (f1 : A -> app (interp_pfun P) A)
+          e2 (f2 : app (interp_pfun P) B -> B)
+          (f3 : A -> B),
+    interp_term e1 f1 ->
+    interp_term e2 f2 ->
+    interp_term (tmRec P e1 e2) f3 ->
+    interp_term (tmRec P e1 e2)
+                (fun x => f2 (map (interp_pfun P) f3 (f1 x)))
+.
+
+
+(* XXX *)
+CoInductive interp_term :
+  forall {e : term} {t : type} (wt : HasType e t)
+    (f : interp_type t), Prop :=
+| IPrim : forall p t wt x, interp_aTerm p t wt x -> interp_term wt x
+| IRec: forall p e2 a e1 b (wte2 : HasType e1 ()), interp_term
+.
 
 Fixpoint interp_term (e : term) (t : type) (wt : HasType e t) : interp_type t :=
   match e return forall t, HasType e t -> interp_type t with
   | tmPrim p => fun t wt => interp_aTerm p t wt
+  | _ => fun _ wt => bot >>= fun v _ => v
   end.
