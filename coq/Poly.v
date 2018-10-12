@@ -367,6 +367,9 @@ Definition takeI (n : nat) P (x : Mu P) : Delay (app (P^n) unit) :=
 Fixpoint tryTakeI (n : nat) P (x : Mu P) : option (app (P^n) unit) :=
   tryUnwrap large (takeI n P x).
 
+CoFixpoint foldP {A} P (f : app P A ~> A) (x : Mu P) : Delay A :=
+  iout P x >>= fun r _ => fmap P (foldP P f) r >>= fun v _ => f v.
+
 Section ExamplesRec.
   Open Scope functor_scope.
 
@@ -386,7 +389,7 @@ Section ExamplesRec.
     end.
 
   Eval compute in tryTake 20 (listP nat) (build0 3).
-  Eval compute in tryTakeI 20 (listP nat) (buildI0 10 3).
+  Eval compute in tryTakeI 20 (listP nat) (buildI0 3 3).
 
   Definition ntreeP (A : Set) : functor := \PK{unit} \PS \PK{ A } \PP \PI \PP \PI.
   Definition ltreeP (A : Set) : functor := \PK{A} \PS \PI \PP \PI.
@@ -516,9 +519,6 @@ interp_pfun (p : pfun) : functor :=
   | fnSum p q => psum (interp_pfun p) (interp_pfun q)
   end.
 
-(*
-Parameter interp_aTerm : forall (e : aTerm) (t : type), HasType (tmPrim e) t -> interp_type t -> Prop.
-*)
 Parameter interp_aTerm : forall (e : aTerm) (A : Set), A -> Prop.
 
 CoInductive interp_term : forall {A : Set}, term -> A -> Prop :=
@@ -565,20 +565,4 @@ CoInductive interp_term : forall {A : Set}, term -> A -> Prop :=
     interp_term e2 f2 ->
     interp_term (tmRec P e1 e2) f3 ->
     interp_term (tmRec P e1 e2)
-                (fun x => f2 (map (interp_pfun P) f3 (f1 x)))
-.
-
-
-(* XXX *)
-CoInductive interp_term :
-  forall {e : term} {t : type} (wt : HasType e t)
-    (f : interp_type t), Prop :=
-| IPrim : forall p t wt x, interp_aTerm p t wt x -> interp_term wt x
-| IRec: forall p e2 a e1 b (wte2 : HasType e1 ()), interp_term
-.
-
-Fixpoint interp_term (e : term) (t : type) (wt : HasType e t) : interp_type t :=
-  match e return forall t, HasType e t -> interp_type t with
-  | tmPrim p => fun t wt => interp_aTerm p t wt
-  | _ => fun _ wt => bot >>= fun v _ => v
-  end.
+                (fun x => f2 (map (interp_pfun P) f3 (f1 x))).
