@@ -367,7 +367,7 @@ Definition takeI (n : nat) P (x : Mu P) : Delay (app (P^n) unit) :=
 Fixpoint tryTakeI (n : nat) P (x : Mu P) : option (app (P^n) unit) :=
   tryUnwrap large (takeI n P x).
 
-CoFixpoint foldP {A} P (f : app P A ~> A) (x : Mu P) : Delay A :=
+Fail CoFixpoint foldP {A} P (f : app P A ~> A) (x : Mu P) : Delay A :=
   iout P x >>= fun r _ => fmap P (foldP P f) r >>= fun v _ => f v.
 
 Section ExamplesRec.
