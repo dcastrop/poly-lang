@@ -370,6 +370,19 @@ Fixpoint tryTakeI (n : nat) P (x : Mu P) : option (app (P^n) unit) :=
 Fail CoFixpoint foldP {A} P (f : app P A ~> A) (x : Mu P) : Delay A :=
   iout P x >>= fun r _ => fmap P (foldP P f) r >>= fun v _ => f v.
 
+Fail CoFixpoint unfoldP {A : Set} P (f : A -> app P A) (x : A) : Delay (Nu P) :=
+  cin P ((cofix pmap P0 x : Delay (app P0 (Nu P)) :=
+           match P0 as P' return app P' A ~> app P' (Nu P) with
+           | pid => fun (x : A) => Wait (unfoldP P f x)
+           | pconst _ => fun x => mret x
+           | pprod L R => fun x => mret (pmap L (fst x), pmap R (snd x))
+           | psum L R => fun x => mret match x with
+                                   | inl y => inl (pmap L y)
+                                   | inr y => inr (pmap R y)
+                                   end
+           | pexp D P => fun fx => mret (fun x => fx x >>= fun y _ => mret (pmap P y))
+           end x) P (f x)).
+
 Section ExamplesRec.
   Open Scope functor_scope.
 
@@ -521,6 +534,7 @@ interp_pfun (p : pfun) : functor :=
 
 Parameter interp_aTerm : forall (e : aTerm) (A : Set), A -> Prop.
 
+(* XXX: replace "map" by relation *)
 CoInductive interp_term : forall {A : Set}, term -> A -> Prop :=
 | IPrim : forall A p x, interp_aTerm p A x -> interp_term (tmPrim p) x
 | IUnit : interp_term tmUnit tt
